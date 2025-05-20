@@ -12,6 +12,8 @@
       font-family: 'Source Code Pro', 'Courier New', monospace;
       background-color: #231F20;
       color: #FAFAFA;
+      background: linear-gradient(135deg, #0c0c0c, #1d1d1d);
+      color: #f0f0f0;
       padding: 20px;
       min-height: 100vh;
     }
@@ -29,6 +31,7 @@
     
     #console {
       background-color: #1A1A1A;
+      background-color: rgba(26, 26, 26, 0.9);
       border: 1px solid #444;
       border-radius: 5px;
       padding: 15px;
@@ -86,6 +89,7 @@
     
     button:hover {
       background-color: #444444;
+      background-color: #3a3a3a;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
     }
     
@@ -97,6 +101,7 @@
       margin-bottom: 20px;
       border-radius: 4px;
       box-shadow: 0 0 8px rgba(241, 76, 50, 0.6);
+      box-shadow: 0 0 8px rgba(31, 110, 31, 0.6);
     }
 
     #executeButton:hover {
@@ -113,6 +118,20 @@
 
     #clearButton:hover {
       background-color: #333333;
+=======
+      background-color: #2c992c;
+      box-shadow: 0 0 12px rgba(44, 153, 44, 0.8);
+    }
+
+    #clearButton {
+      background-color: #8a2a2a;
+      border: 1px solid #bb4444;
+      margin-left: 10px;
+    }
+
+    #clearButton:hover {
+      background-color: #a94444;
+
     }
 
     .button-row {
@@ -145,6 +164,12 @@
       gap: 10px;
       margin-bottom: 20px;
     }
+
+    #inputArea {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
     
     #progressBar {
       width: 100%;
@@ -158,6 +183,7 @@
     #progressBarFill {
       height: 20px;
       background: linear-gradient(90deg, #F14C32, #F3705B);
+      background: linear-gradient(90deg, #4af626, #3aaf20);
       border-radius: 5px;
       width: 0%;
       transition: width 0.3s;
@@ -211,6 +237,13 @@
     h1 {
       text-align: center;
       color: #F14C32;
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      text-align: center;
+      color: #4af626;
+      text-shadow: 0 0 8px #4af626;
       margin-bottom: 10px;
     }
   </style>
