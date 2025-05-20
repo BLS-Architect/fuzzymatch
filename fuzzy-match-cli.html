@@ -158,6 +158,24 @@
       background-color: #444444;
     }
 
+    .file-name {
+      font-style: italic;
+      margin-right: 10px;
+    }
+
+    #fileInputs {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .file-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     #inputArea {
       display: flex;
       gap: 10px;
@@ -270,10 +288,20 @@
     <div id="progressBarFill"></div>
   </div>
 
-  </div> <!-- end container -->
+  <div id="fileInputs">
+    <div class="file-group">
+      <label for="primaryFileInput" id="primaryFileLabel" class="file-label">Select Primary File</label>
+      <span id="primaryFileName" class="file-name">No file chosen</span>
+      <input type="file" id="primaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
+    </div>
+    <div class="file-group">
+      <label for="secondaryFileInput" id="secondaryFileLabel" class="file-label">Select Secondary File</label>
+      <span id="secondaryFileName" class="file-name">No file chosen</span>
+      <input type="file" id="secondaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
+    </div>
+  </div>
 
-  <input type="file" id="primaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
-  <input type="file" id="secondaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
+  </div> <!-- end container -->
 
   <script>
     // Main variables
@@ -284,6 +312,8 @@
     const clearButton = document.getElementById('clearButton');
     const primaryFileInput = document.getElementById('primaryFileInput');
     const secondaryFileInput = document.getElementById('secondaryFileInput');
+    const primaryFileName = document.getElementById('primaryFileName');
+    const secondaryFileName = document.getElementById('secondaryFileName');
     const progressBar = document.getElementById('progressBar');
     const progressBarFill = document.getElementById('progressBarFill');
 
@@ -333,9 +363,10 @@
           process: function() {
             // Make sure the file input is reset first
             primaryFileInput.value = null;
+            primaryFileName.textContent = "No file chosen";
+            state.primaryFile = null;
             writeToConsole("Waiting for file selection...", "info");
-            
-            primaryFileInput.click();
+
             return new Promise((resolve) => {
               const fileChangeHandler = async function(e) {
                 // Remove the event handler after it's called
@@ -347,8 +378,9 @@
                   resolve(false);
                   return;
                 }
-                
+
                 state.primaryFile = file;
+                primaryFileName.textContent = file.name;
                 writeToConsole(`Selected file: ${file.name}`, "info");
                 
                 try {
@@ -452,9 +484,10 @@
             if (state.matchType === "twoFiles") {
               // Make sure the file input is reset first
               secondaryFileInput.value = null;
+              secondaryFileName.textContent = "No file chosen";
+              state.secondaryFile = null;
               writeToConsole("Waiting for file selection...", "info");
-              
-              secondaryFileInput.click();
+
               return new Promise((resolve) => {
                 const fileChangeHandler = async function(e) {
                   // Remove the event handler after it's called
@@ -468,6 +501,7 @@
                   }
                   
                   state.secondaryFile = file;
+                  secondaryFileName.textContent = file.name;
                   writeToConsole(`Selected file: ${file.name}`, "info");
                   
                   try {
@@ -971,9 +1005,14 @@
             try {
               const data = e.target.result;
               const workbook = XLSX.read(data, { type: 'array' });
-              
+
               // Get all sheet names
               const sheetNames = workbook.SheetNames;
+
+              if (!sheetNames || sheetNames.length === 0) {
+                reject(new Error('Excel file contains no sheets'));
+                return;
+              }
               
               // If no specific sheet is requested, return the sheet names
               if (sheetName === null && sheetNames.length > 1) {
@@ -986,6 +1025,10 @@
                 // Use the specified sheet or the first one
                 const sheetToUse = sheetName || sheetNames[0];
                 const worksheet = workbook.Sheets[sheetToUse];
+                if (!worksheet) {
+                  reject(new Error(`Sheet ${sheetToUse} not found`));
+                  return;
+                }
                 const jsonData = XLSX.utils.sheet_to_json(worksheet);
                 
                 resolve({
@@ -1573,7 +1616,9 @@
       // Reset file inputs
       primaryFileInput.value = "";
       secondaryFileInput.value = "";
-      
+      primaryFileName.textContent = "No file chosen";
+      secondaryFileName.textContent = "No file chosen";
+
       processCurrentStep();
     }
 
@@ -1606,8 +1651,8 @@
       
       // Check if this step involves file selection or automatic processing
       const isFileStep = typeof step.process === 'function' && (
-        step.process.toString().includes('primaryFileInput.click()') || 
-        step.process.toString().includes('secondaryFileInput.click()')
+        step.process.toString().includes('primaryFileInput.addEventListener') ||
+        step.process.toString().includes('secondaryFileInput.addEventListener')
       );
       
       const isAutoProcessStep = typeof step.process === 'function' && (
