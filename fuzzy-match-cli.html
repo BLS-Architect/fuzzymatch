@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fuzzy Match CLI</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background-color: #0c0c0c;
+      color: #f0f0f0;
+      padding: 20px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    
+    #console {
+      background-color: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 5px;
+      padding: 15px;
+      height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+      white-space: pre-wrap;
+    }
+    
+    .prompt {
+      color: #4af626;
+      font-weight: bold;
+    }
+    
+    .command {
+      color: #f0f0f0;
+    }
+    
+    .error {
+      color: #ff4040;
+    }
+    
+    .success {
+      color: #40ff40;
+    }
+    
+    .info {
+      color: #4090ff;
+    }
+    
+    input[type="text"] {
+      background-color: #1a1a1a;
+      border: 1px solid #444;
+      color: #f0f0f0;
+      padding: 8px;
+      width: 80%;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+    }
+    
+    button {
+      background-color: #2a2a2a;
+      border: 1px solid #444;
+      color: #f0f0f0;
+      padding: 8px 15px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      font-family: 'Courier New', monospace;
+    }
+    
+    button:hover {
+      background-color: #3a3a3a;
+    }
+    
+    #executeButton {
+      background-color: #1f6e1f;
+      border: 1px solid #2c992c;
+      padding: 12px 25px;
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+    
+    #executeButton:hover {
+      background-color: #2c992c;
+    }
+    
+    .file-input {
+      display: none;
+    }
+    
+    .file-label {
+      display: inline-block;
+      background-color: #2a2a2a;
+      border: 1px solid #444;
+      color: #f0f0f0;
+      padding: 8px 15px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+      margin-right: 10px;
+    }
+    
+    .file-label:hover {
+      background-color: #3a3a3a;
+    }
+    
+    #progressBar {
+      width: 100%;
+      background-color: #2a2a2a;
+      border-radius: 5px;
+      margin-top: 20px;
+      display: none;
+    }
+    
+    #progressBarFill {
+      height: 20px;
+      background-color: #4af626;
+      border-radius: 5px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .result-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    .result-table th, 
+    .result-table td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .result-table th {
+      background-color: #2a2a2a;
+    }
+
+    .score-high {
+      background-color: rgba(74, 246, 38, 0.2);
+    }
+
+    .score-medium {
+      background-color: rgba(246, 223, 38, 0.2);
+    }
+
+    .score-low {
+      background-color: rgba(246, 38, 38, 0.2);
+    }
+    
+    .download-btn {
+      background-color: #1f6e1f;
+      padding: 10px 15px;
+      margin: 10px 0;
+      cursor: pointer;
+    }
+    
+    .fallback-btn {
+      background-color: #2a2a2a;
+      padding: 10px 15px;
+      margin: 10px 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fuzzy Match CLI Tool</h1>
+  <button id="executeButton">Execute Fuzzy Match</button>
+  
+  <div id="console">
+    <div class="info">*** Fuzzy Match CLI Tool ***</div>
+    <div class="info">Click 'Execute Fuzzy Match' to begin</div>
+  </div>
+  
+  <div id="inputArea">
+    <input type="text" id="commandInput" placeholder="Type your response here..." disabled>
+    <button id="submitButton" disabled>Submit</button>
+  </div>
+  
+  <div id="progressBar">
+    <div id="progressBarFill"></div>
+  </div>
+  
+  <input type="file" id="primaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
+  <input type="file" id="secondaryFileInput" class="file-input" accept=".csv,.xlsx,.xls">
+
+  <script>
+    // Main variables
+    const console = document.getElementById('console');
+    const commandInput = document.getElementById('commandInput');
+    const submitButton = document.getElementById('submitButton');
+    const executeButton = document.getElementById('executeButton');
+    const primaryFileInput = document.getElementById('primaryFileInput');
+    const secondaryFileInput = document.getElementById('secondaryFileInput');
+    const progressBar = document.getElementById('progressBar');
+    const progressBarFill = document.getElementById('progressBarFill');
+
+    // State variables
+    let state = {
+      workflow: null,
+      step: 0,
+      primaryFile: null,
+      secondaryFile: null,
+      primaryData: null,
+      secondaryData: null,
+      primarySheetNames: null,
+      secondarySheetNames: null,
+      primarySelectedSheet: null,
+      secondarySelectedSheet: null,
+      primaryColumn: null,
+      secondaryColumn: null,
+      returnColumns: [],
+      threshold: 0.7,
+      matchResults: [],
+      outputType: null
+    };
+
+    // Workflows
+    const workflows = {
+      fuzzyMatch: [
+        { 
+          prompt: "Would you like to match data between two files (1) or find duplicates in a single file (2)?",
+          process: function(response) {
+            if (response === "1") {
+              state.matchType = "twoFiles";
+              writeToConsole("You selected: Match between two files", "info");
+              return true;
+            } else if (response === "2") {
+              state.matchType = "singleFile";
+              writeToConsole("You selected: Find duplicates in a single file", "info");
+              return true;
+            } else {
+              writeToConsole("Please enter 1 or 2.", "error");
+              return false;
+            }
+          }
+        },
+        // First file prompt and handler
+        {
+          prompt: "Please select the primary file (CSV or Excel)",
+          process: function() {
+            // Make sure the file input is reset first
+            primaryFileInput.value = null;
+            writeToConsole("Waiting for file selection...", "info");
+            
+            primaryFileInput.click();
+            return new Promise((resolve) => {
+              const fileChangeHandler = async function(e) {
+                // Remove the event handler after it's called
+                primaryFileInput.removeEventListener('change', fileChangeHandler);
+                
+                const file = e.target.files[0];
+                if (!file) {
+                  writeToConsole("No file selected or file selection cancelled.", "error");
+                  resolve(false);
+                  return;
+                }
+                
+                state.primaryFile = file;
+                writeToConsole(`Selected file: ${file.name}`, "info");
+                
+                try {
+                  const fileData = await readFile(file);
+                  
+                  // Check if this is an Excel file with multiple sheets
+                  if (fileData.isExcel && fileData.sheetNames && fileData.sheetNames.length > 1) {
+                    state.primarySheetNames = fileData.sheetNames;
+                    
+                    // If there are multiple sheets, we'll ask which one to use in the next step
+                    writeToConsole(`Excel file has ${fileData.sheetNames.length} sheets: ${fileData.sheetNames.join(", ")}`, "info");
+                    resolve(true);
+                  } else {
+                    // For CSV or Excel with only one sheet, we can proceed directly
+                    if (fileData.data) {
+                      state.primaryData = fileData.data;
+                      if (state.primaryData && state.primaryData.length > 0) {
+                        writeToConsole(`Successfully loaded ${state.primaryData.length} rows`, "success");
+                        writeToConsole(`Columns: ${Object.keys(state.primaryData[0]).join(", ")}`, "info");
+                      } else {
+                        writeToConsole("File appears to be empty or invalid.", "error");
+                        resolve(false);
+                        return;
+                      }
+                    }
+                    
+                    // For single-sheet Excel files, remember the sheet name
+                    if (fileData.isExcel) {
+                      state.primarySheetNames = fileData.sheetNames;
+                      state.primarySelectedSheet = fileData.currentSheet;
+                    }
+                    
+                    resolve(true);
+                  }
+                } catch (error) {
+                  writeToConsole(`Error reading file: ${error.message}`, "error");
+                  resolve(false);
+                }
+              };
+              
+              // Add the event listener
+              primaryFileInput.addEventListener('change', fileChangeHandler);
+              
+              // Add a timeout to handle cases where user doesn't select a file
+              setTimeout(() => {
+                if (!state.primaryFile) {
+                  writeToConsole("File selection timed out. Please try again.", "error");
+                  primaryFileInput.removeEventListener('change', fileChangeHandler);
+                  resolve(false);
+                }
+              }, 60000); // 1 minute timeout
+            });
+          }
+        },
+        // Primary sheet selection (conditionally shown)
+        {
+          prompt: function() {
+            if (state.primarySheetNames && state.primarySheetNames.length > 1 && !state.primaryData) {
+              return `Which sheet from the primary file would you like to use? Enter a number:\n${state.primarySheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}`;
+            }
+            return null; // Skip this step if not applicable
+          },
+          process: async function(response) {
+            const idx = parseInt(response) - 1;
+            
+            if (idx >= 0 && idx < state.primarySheetNames.length) {
+              const selectedSheet = state.primarySheetNames[idx];
+              state.primarySelectedSheet = selectedSheet;
+              writeToConsole(`You selected sheet: ${selectedSheet}`, "info");
+              
+              try {
+                const fileData = await readFile(state.primaryFile, selectedSheet);
+                state.primaryData = fileData.data;
+                
+                if (state.primaryData && state.primaryData.length > 0) {
+                  writeToConsole(`Successfully loaded ${state.primaryData.length} rows from sheet "${selectedSheet}"`, "success");
+                  writeToConsole(`Columns: ${Object.keys(state.primaryData[0]).join(", ")}`, "info");
+                  return true;
+                } else {
+                  writeToConsole("Sheet appears to be empty or invalid.", "error");
+                  return false;
+                }
+              } catch (error) {
+                writeToConsole(`Error reading sheet: ${error.message}`, "error");
+                return false;
+              }
+            } else {
+              writeToConsole(`Please enter a number between 1 and ${state.primarySheetNames.length}.`, "error");
+              return false;
+            }
+          }
+        },
+        // Second file or column selection
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ? 
+              "Please select the secondary file (CSV or Excel)" : 
+              "Which column contains the text you want to check for duplicates?";
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              // Make sure the file input is reset first
+              secondaryFileInput.value = null;
+              writeToConsole("Waiting for file selection...", "info");
+              
+              secondaryFileInput.click();
+              return new Promise((resolve) => {
+                const fileChangeHandler = async function(e) {
+                  // Remove the event handler after it's called
+                  secondaryFileInput.removeEventListener('change', fileChangeHandler);
+                  
+                  const file = e.target.files[0];
+                  if (!file) {
+                    writeToConsole("No file selected or file selection cancelled.", "error");
+                    resolve(false);
+                    return;
+                  }
+                  
+                  state.secondaryFile = file;
+                  writeToConsole(`Selected file: ${file.name}`, "info");
+                  
+                  try {
+                    const fileData = await readFile(file);
+                    
+                    // Check if this is an Excel file with multiple sheets
+                    if (fileData.isExcel && fileData.sheetNames && fileData.sheetNames.length > 1) {
+                      state.secondarySheetNames = fileData.sheetNames;
+                      
+                      // If there are multiple sheets, we'll ask which one to use in the next step
+                      writeToConsole(`Excel file has ${fileData.sheetNames.length} sheets: ${fileData.sheetNames.join(", ")}`, "info");
+                      resolve(true);
+                    } else {
+                      // For CSV or Excel with only one sheet, we can proceed directly
+                      if (fileData.data) {
+                        state.secondaryData = fileData.data;
+                        if (state.secondaryData && state.secondaryData.length > 0) {
+                          writeToConsole(`Successfully loaded ${state.secondaryData.length} rows`, "success");
+                          writeToConsole(`Columns: ${Object.keys(state.secondaryData[0]).join(", ")}`, "info");
+                        } else {
+                          writeToConsole("File appears to be empty or invalid.", "error");
+                          resolve(false);
+                          return;
+                        }
+                      }
+                      
+                      // For single-sheet Excel files, remember the sheet name
+                      if (fileData.isExcel) {
+                        state.secondarySheetNames = fileData.sheetNames;
+                        state.secondarySelectedSheet = fileData.currentSheet;
+                      }
+                      
+                      resolve(true);
+                    }
+                  } catch (error) {
+                    writeToConsole(`Error reading file: ${error.message}`, "error");
+                    resolve(false);
+                  }
+                };
+                
+                // Add the event listener
+                secondaryFileInput.addEventListener('change', fileChangeHandler);
+                
+                // Add a timeout to handle cases where user doesn't select a file
+                setTimeout(() => {
+                  if (!state.secondaryFile) {
+                    writeToConsole("File selection timed out. Please try again.", "error");
+                    secondaryFileInput.removeEventListener('change', fileChangeHandler);
+                    resolve(false);
+                  }
+                }, 60000); // 1 minute timeout
+              });
+            } else {
+              // Single file, select column
+              const availableColumns = Object.keys(state.primaryData[0]);
+              if (availableColumns.includes(response)) {
+                state.primaryColumn = response;
+                writeToConsole(`You selected column: ${response}`, "info");
+                // For single file, use the same data for both
+                state.secondaryData = state.primaryData;
+                state.secondaryColumn = state.primaryColumn;
+                return true;
+              } else {
+                writeToConsole(`Column '${response}' not found. Available columns: ${availableColumns.join(", ")}`, "error");
+                return false;
+              }
+            }
+          }
+        },
+        // Secondary sheet selection (conditionally shown)
+        {
+          prompt: function() {
+            if (state.matchType === "twoFiles" && state.secondarySheetNames && state.secondarySheetNames.length > 1 && !state.secondaryData) {
+              return `Which sheet from the secondary file would you like to use? Enter a number:\n${state.secondarySheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}`;
+            }
+            return null; // Skip this step if not applicable
+          },
+          process: async function(response) {
+            const idx = parseInt(response) - 1;
+            
+            if (idx >= 0 && idx < state.secondarySheetNames.length) {
+              const selectedSheet = state.secondarySheetNames[idx];
+              state.secondarySelectedSheet = selectedSheet;
+              writeToConsole(`You selected sheet: ${selectedSheet}`, "info");
+              
+              try {
+                const fileData = await readFile(state.secondaryFile, selectedSheet);
+                state.secondaryData = fileData.data;
+                
+                if (state.secondaryData && state.secondaryData.length > 0) {
+                  writeToConsole(`Successfully loaded ${state.secondaryData.length} rows from sheet "${selectedSheet}"`, "success");
+                  writeToConsole(`Columns: ${Object.keys(state.secondaryData[0]).join(", ")}`, "info");
+                  return true;
+                } else {
+                  writeToConsole("Sheet appears to be empty or invalid.", "error");
+                  return false;
+                }
+              } catch (error) {
+                writeToConsole(`Error reading sheet: ${error.message}`, "error");
+                return false;
+              }
+            } else {
+              writeToConsole(`Please enter a number between 1 and ${state.secondarySheetNames.length}.`, "error");
+              return false;
+            }
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ?
+              "Which column from the primary file should be used for matching?" :
+              "What threshold would you like to use for similarity (0.0-1.0)? Higher values require closer matches (recommended: 0.7)";
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              // Get available columns and display them with their exact names
+              const availableColumns = Object.keys(state.primaryData[0]);
+              writeToConsole(`Available columns (exact names): "${availableColumns.join('", "')}"`, "info");
+              
+              // Try to find the column using a more flexible approach
+              // 1. Try exact match first
+              let found = availableColumns.includes(response);
+              let matchedColumn = response;
+              
+              // 2. If not found, try case-insensitive match
+              if (!found) {
+                const lowerResponse = response.toLowerCase();
+                const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found case-insensitive match: "${matchingCol}"`, "info");
+                }
+              }
+              
+              // 3. If still not found, try trimming whitespace
+              if (!found) {
+                const trimmedResponse = response.trim();
+                const matchingCol = availableColumns.find(col => col.trim() === trimmedResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found match after trimming whitespace: "${matchingCol}"`, "info");
+                }
+              }
+              
+              // 4. If still not found, try case-insensitive and trimming
+              if (!found) {
+                const lowerTrimmedResponse = response.toLowerCase().trim();
+                const matchingCol = availableColumns.find(col => col.toLowerCase().trim() === lowerTrimmedResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found match after case-insensitive comparison and trimming whitespace: "${matchingCol}"`, "info");
+                }
+              }
+              
+              if (found) {
+                state.primaryColumn = matchedColumn;
+                writeToConsole(`You selected column: "${matchedColumn}"`, "success");
+                return true;
+              } else {
+                writeToConsole(`Column "${response}" not found. Please enter the exact column name as shown above.`, "error");
+                return false;
+              }
+            } else {
+              // Threshold for single file
+              const threshold = parseFloat(response);
+              if (!isNaN(threshold) && threshold >= 0 && threshold <= 1) {
+                state.threshold = threshold;
+                writeToConsole(`Threshold set to: ${threshold}`, "info");
+                return true;
+              } else {
+                writeToConsole("Please enter a valid number between 0.0 and 1.0", "error");
+                return false;
+              }
+            }
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ?
+              "Which column from the secondary file should be matched against?" :
+              "Which columns would you like to include in the results? (comma-separated, or 'all' for all columns)";
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              // Get available columns and display them with their exact names
+              const availableColumns = Object.keys(state.secondaryData[0]);
+              writeToConsole(`Available columns (exact names): "${availableColumns.join('", "')}"`, "info");
+              
+              // Try to find the column using a more flexible approach
+              // 1. Try exact match first
+              let found = availableColumns.includes(response);
+              let matchedColumn = response;
+              
+              // 2. If not found, try case-insensitive match
+              if (!found) {
+                const lowerResponse = response.toLowerCase();
+                const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found case-insensitive match: "${matchingCol}"`, "info");
+                }
+              }
+              
+              // 3. If still not found, try trimming whitespace
+              if (!found) {
+                const trimmedResponse = response.trim();
+                const matchingCol = availableColumns.find(col => col.trim() === trimmedResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found match after trimming whitespace: "${matchingCol}"`, "info");
+                }
+              }
+              
+              // 4. If still not found, try case-insensitive and trimming
+              if (!found) {
+                const lowerTrimmedResponse = response.toLowerCase().trim();
+                const matchingCol = availableColumns.find(col => col.toLowerCase().trim() === lowerTrimmedResponse);
+                if (matchingCol) {
+                  found = true;
+                  matchedColumn = matchingCol;
+                  writeToConsole(`Found match after case-insensitive comparison and trimming whitespace: "${matchingCol}"`, "info");
+                }
+              }
+              
+              if (found) {
+                state.secondaryColumn = matchedColumn;
+                writeToConsole(`You selected column: "${matchedColumn}"`, "success");
+                return true;
+              } else {
+                writeToConsole(`Column "${response}" not found. Please enter the exact column name as shown above.`, "error");
+                return false;
+              }
+            } else {
+              // Return columns for single file
+              if (response.toLowerCase() === "all") {
+                state.returnColumns = Object.keys(state.primaryData[0]);
+                writeToConsole(`All columns will be included in results`, "info");
+                return true;
+              } else {
+                const columns = response.split(",").map(c => c.trim());
+                const availableColumns = Object.keys(state.primaryData[0]);
+                
+                // Try to match each column, allowing for case-insensitivity
+                const matchedColumns = [];
+                const unmatchedColumns = [];
+                
+                columns.forEach(requestedCol => {
+                  // Try direct match
+                  if (availableColumns.includes(requestedCol)) {
+                    matchedColumns.push(requestedCol);
+                    return;
+                  }
+                  
+                  // Try case-insensitive match
+                  const lowerRequestedCol = requestedCol.toLowerCase();
+                  const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerRequestedCol);
+                  if (matchingCol) {
+                    matchedColumns.push(matchingCol);
+                    return;
+                  }
+                  
+                  // No match found
+                  unmatchedColumns.push(requestedCol);
+                });
+                
+                if (unmatchedColumns.length > 0) {
+                  writeToConsole(`These columns were not found: ${unmatchedColumns.join(", ")}`, "error");
+                  writeToConsole(`Available columns: "${availableColumns.join('", "')}"`, "info");
+                  return false;
+                } else {
+                  state.returnColumns = matchedColumns;
+                  writeToConsole(`Selected columns: ${matchedColumns.join(", ")}`, "info");
+                  return true;
+                }
+              }
+            }
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ?
+              "What threshold would you like to use for similarity (0.0-1.0)? Higher values require closer matches (recommended: 0.7)" :
+              null;
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              const threshold = parseFloat(response);
+              if (!isNaN(threshold) && threshold >= 0 && threshold <= 1) {
+                state.threshold = threshold;
+                writeToConsole(`Threshold set to: ${threshold}`, "info");
+                return true;
+              } else {
+                writeToConsole("Please enter a valid number between 0.0 and 1.0", "error");
+                return false;
+              }
+            }
+            return true; // Skip for single file
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ?
+              "Which columns from the secondary file would you like to include in the results? (comma-separated, or 'all' for all columns)" :
+              null;
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              if (response.toLowerCase() === "all") {
+                state.returnColumns = Object.keys(state.secondaryData[0]);
+                writeToConsole(`All columns will be included in results`, "info");
+                return true;
+              } else {
+                const columns = response.split(",").map(c => c.trim());
+                const availableColumns = Object.keys(state.secondaryData[0]);
+                
+                // Try to match each column, allowing for case-insensitivity
+                const matchedColumns = [];
+                const unmatchedColumns = [];
+                
+                columns.forEach(requestedCol => {
+                  // Try direct match
+                  if (availableColumns.includes(requestedCol)) {
+                    matchedColumns.push(requestedCol);
+                    return;
+                  }
+                  
+                  // Try case-insensitive match
+                  const lowerRequestedCol = requestedCol.toLowerCase();
+                  const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerRequestedCol);
+                  if (matchingCol) {
+                    matchedColumns.push(matchingCol);
+                    return;
+                  }
+                  
+                  // No match found
+                  unmatchedColumns.push(requestedCol);
+                });
+                
+                if (unmatchedColumns.length > 0) {
+                  writeToConsole(`These columns were not found: ${unmatchedColumns.join(", ")}`, "error");
+                  writeToConsole(`Available columns: "${availableColumns.join('", "')}"`, "info");
+                  return false;
+                } else {
+                  state.returnColumns = matchedColumns;
+                  writeToConsole(`Selected columns: ${matchedColumns.join(", ")}`, "info");
+                  return true;
+                }
+              }
+            }
+            return true; // Skip for single file
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "twoFiles" ?
+              "How would you like to output the results? (1) Display in browser, (2) Download as CSV, (3) Download as Excel" :
+              null;
+          },
+          process: function(response) {
+            if (state.matchType === "twoFiles") {
+              if (response === "1") {
+                state.outputType = "display";
+                writeToConsole("Results will be displayed in the browser", "info");
+                return true;
+              } else if (response === "2") {
+                state.outputType = "csv";
+                writeToConsole("Results will be downloaded as CSV", "info");
+                return true;
+              } else if (response === "3") {
+                state.outputType = "excel";
+                writeToConsole("Results will be downloaded as Excel file", "info");
+                return true;
+              } else {
+                writeToConsole("Please enter 1, 2, or 3.", "error");
+                return false;
+              }
+            }
+            return true; // Skip for single file
+          }
+        },
+        {
+          prompt: function() {
+            return state.matchType === "singleFile" ?
+              "How would you like to output the results? (1) Display in browser, (2) Download as CSV, (3) Download as Excel" :
+              null;
+          },
+          process: function(response) {
+            if (state.matchType === "singleFile") {
+              if (response === "1") {
+                state.outputType = "display";
+                writeToConsole("Results will be displayed in the browser", "info");
+                return true;
+              } else if (response === "2") {
+                state.outputType = "csv";
+                writeToConsole("Results will be downloaded as CSV", "info");
+                return true;
+              } else if (response === "3") {
+                state.outputType = "excel";
+                writeToConsole("Results will be downloaded as Excel file", "info");
+                return true;
+              } else {
+                writeToConsole("Please enter 1, 2, or 3.", "error");
+                return false;
+              }
+            }
+            return true; // Skip for two files
+          }
+        },
+        {
+          prompt: "Processing your data... please wait",
+          process: async function() {
+            writeToConsole("Starting fuzzy matching process...", "info");
+            showProgressBar();
+            
+            try {
+              if (state.matchType === "twoFiles") {
+                await performTwoFileMatch();
+              } else {
+                await performSingleFileMatch();
+              }
+              
+              hideProgressBar();
+              
+              const totalMatches = state.matchResults.length;
+              writeToConsole(`Completed! Found ${totalMatches} potential matches.`, "success");
+              
+              // Output the results
+              if (state.outputType === "display") {
+                displayResults();
+              } else if (state.outputType === "csv") {
+                downloadCsv();
+              } else if (state.outputType === "excel") {
+                downloadExcel();
+              }
+              
+              return true;
+            } catch (error) {
+              hideProgressBar();
+              writeToConsole(`Error during matching: ${error.message}`, "error");
+              return false;
+            }
+          }
+        }
+      ]
+    };
+
+    // Utility Functions
+    function writeToConsole(text, type = "command") {
+      const element = document.createElement("div");
+      element.className = type;
+      element.textContent = text;
+      console.appendChild(element);
+      console.scrollTop = console.scrollHeight;
+    }
+
+    function promptUser(text) {
+      const element = document.createElement("div");
+      element.className = "prompt";
+      element.textContent = "> " + text;
+      console.appendChild(element);
+      console.scrollTop = console.scrollHeight;
+      
+      // Enable input
+      commandInput.disabled = false;
+      submitButton.disabled = false;
+      commandInput.focus();
+    }
+
+    async function readFile(file, sheetName = null) {
+      return new Promise((resolve, reject) => {
+        const extension = file.name.split('.').pop().toLowerCase();
+        
+        if (extension === 'csv') {
+          Papa.parse(file, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+              if (results.errors && results.errors.length > 0) {
+                reject(new Error(results.errors[0].message));
+              } else {
+                resolve({
+                  data: results.data,
+                  isExcel: false,
+                  sheetNames: null
+                });
+              }
+            },
+            error: (error) => {
+              reject(error);
+            }
+          });
+        } else if (['xlsx', 'xls'].includes(extension)) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = e.target.result;
+              const workbook = XLSX.read(data, { type: 'array' });
+              
+              // Get all sheet names
+              const sheetNames = workbook.SheetNames;
+              
+              // If no specific sheet is requested, return the sheet names
+              if (sheetName === null && sheetNames.length > 1) {
+                resolve({
+                  data: null,
+                  isExcel: true,
+                  sheetNames: sheetNames
+                });
+              } else {
+                // Use the specified sheet or the first one
+                const sheetToUse = sheetName || sheetNames[0];
+                const worksheet = workbook.Sheets[sheetToUse];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                resolve({
+                  data: jsonData,
+                  isExcel: true,
+                  sheetNames: sheetNames,
+                  currentSheet: sheetToUse
+                });
+              }
+            } catch (error) {
+              reject(error);
+            }
+          };
+          reader.onerror = (error) => {
+            reject(error);
+          };
+          reader.readAsArrayBuffer(file);
+        } else {
+          reject(new Error("Unsupported file format"));
+        }
+      });
+    }
+
+    // Levenshtein distance for fuzzy matching
+    function levenshteinDistance(a, b) {
+      if (!a || !b) return 0; // Handle null or undefined values
+      
+      const aStr = String(a).toLowerCase();
+      const bStr = String(b).toLowerCase();
+      
+      if (aStr === bStr) return 1.0; // Exact match
+      if (aStr.length === 0 || bStr.length === 0) return 0.0;
+      
+      const matrix = Array(bStr.length + 1).fill().map(() => Array(aStr.length + 1).fill(0));
+      
+      // Initialize first row and column
+      for (let i = 0; i <= aStr.length; i++) {
+        matrix[0][i] = i;
+      }
+      
+      for (let i = 0; i <= bStr.length; i++) {
+        matrix[i][0] = i;
+      }
+      
+      // Fill matrix
+      for (let j = 1; j <= bStr.length; j++) {
+        for (let i = 1; i <= aStr.length; i++) {
+          const cost = aStr[i - 1] === bStr[j - 1] ? 0 : 1;
+          matrix[j][i] = Math.min(
+            matrix[j - 1][i] + 1,      // Deletion
+            matrix[j][i - 1] + 1,      // Insertion
+            matrix[j - 1][i - 1] + cost // Substitution
+          );
+        }
+      }
+      
+      // Calculate similarity score (0-1 range)
+      const maxLen = Math.max(aStr.length, bStr.length);
+      if (maxLen === 0) return 1.0; // Both strings are empty
+      
+      return 1 - (matrix[bStr.length][aStr.length] / maxLen);
+    }
+
+    async function performTwoFileMatch() {
+      const totalRows = state.primaryData.length;
+      const batchSize = 10; // Process in batches to keep UI responsive
+      let processedRows = 0;
+      
+      state.matchResults = [];
+      
+      for (let i = 0; i < totalRows; i += batchSize) {
+        const batch = state.primaryData.slice(i, Math.min(i + batchSize, totalRows));
+        
+        await new Promise(resolve => {
+          setTimeout(() => {
+            batch.forEach(primaryRow => {
+              const primaryValue = primaryRow[state.primaryColumn];
+              
+              state.secondaryData.forEach(secondaryRow => {
+                const secondaryValue = secondaryRow[state.secondaryColumn];
+                const similarityScore = levenshteinDistance(primaryValue, secondaryValue);
+                
+                if (similarityScore >= state.threshold) {
+                  const resultRow = {
+                    primaryValue,
+                    secondaryValue,
+                    similarityScore
+                  };
+                  
+                  // Add requested return columns
+                  state.returnColumns.forEach(column => {
+                    resultRow[column] = secondaryRow[column];
+                  });
+                  
+                  state.matchResults.push(resultRow);
+                }
+              });
+            });
+            
+            processedRows += batch.length;
+            updateProgress(processedRows / totalRows * 100);
+            resolve();
+          }, 0);
+        });
+      }
+      
+      // Sort by similarity score (highest first)
+      state.matchResults.sort((a, b) => b.similarityScore - a.similarityScore);
+    }
+
+    async function performSingleFileMatch() {
+      const totalRows = state.primaryData.length;
+      const batchSize = 10;
+      let processedRows = 0;
+      
+      state.matchResults = [];
+      
+      for (let i = 0; i < totalRows; i += batchSize) {
+        const batch = state.primaryData.slice(i, Math.min(i + batchSize, totalRows));
+        
+        await new Promise(resolve => {
+          setTimeout(() => {
+            batch.forEach((row1, idx1) => {
+              const value1 = row1[state.primaryColumn];
+              
+              // Compare with all rows after this one to avoid duplicates
+              for (let j = i + idx1 + 1; j < totalRows; j++) {
+                const row2 = state.primaryData[j];
+                const value2 = row2[state.primaryColumn];
+                
+                const similarityScore = levenshteinDistance(value1, value2);
+                
+                if (similarityScore >= state.threshold && value1 !== value2) {
+                  const resultRow = {
+                    value1,
+                    value2,
+                    similarityScore,
+                    row1Index: i + idx1,
+                    row2Index: j
+                  };
+                  
+                  // Add requested return columns
+                  state.returnColumns.forEach(column => {
+                    resultRow[`${column}_1`] = row1[column];
+                    resultRow[`${column}_2`] = row2[column];
+                  });
+                  
+                  state.matchResults.push(resultRow);
+                }
+              }
+            });
+            
+            processedRows += batch.length;
+            updateProgress(processedRows / totalRows * 100);
+            resolve();
+          }, 0);
+        });
+      }
+      
+      // Sort by similarity score (highest first)
+      state.matchResults.sort((a, b) => b.similarityScore - a.similarityScore);
+    }
+
+    // Display the results in a table on the page
+    function displayResults() {
+      // Create a table to display the results
+      const resultsDiv = document.createElement("div");
+      
+      if (state.matchResults.length === 0) {
+        resultsDiv.innerHTML = "<h2>No matches found with the current threshold.</h2>";
+        document.body.appendChild(resultsDiv);
+        return;
+      }
+      
+      // Create table
+      const table = document.createElement("table");
+      table.className = "result-table";
+      
+      // Create header row
+      const thead = document.createElement("thead");
+      const headerRow = document.createElement("tr");
+      
+      if (state.matchType === "twoFiles") {
+        headerRow.innerHTML = `
+          <th>Primary Value</th>
+          <th>Secondary Value</th>
+          <th>Similarity</th>
+          ${state.returnColumns.map(col => `<th>${col}</th>`).join("")}
+        `;
+      } else {
+        headerRow.innerHTML = `
+          <th>Value 1</th>
+          <th>Value 2</th>
+          <th>Similarity</th>
+          ${state.returnColumns.map(col => `<th>${col} (1)</th><th>${col} (2)</th>`).join("")}
+        `;
+      }
+      
+      thead.appendChild(headerRow);
+      table.appendChild(thead);
+      
+      // Create table body
+      const tbody = document.createElement("tbody");
+      
+      state.matchResults.slice(0, 1000).forEach(result => { // Limit to 1000 rows for browser display
+        const row = document.createElement("tr");
+        
+        let scoreClass = "";
+        if (result.similarityScore >= 0.9) {
+          scoreClass = "score-high";
+        } else if (result.similarityScore >= 0.8) {
+          scoreClass = "score-medium";
+        } else {
+          scoreClass = "score-low";
+        }
+        
+        if (state.matchType === "twoFiles") {
+          row.innerHTML = `
+            <td>${result.primaryValue}</td>
+            <td>${result.secondaryValue}</td>
+            <td class="${scoreClass}">${result.similarityScore.toFixed(3)}</td>
+            ${state.returnColumns.map(col => `<td>${result[col] || ""}</td>`).join("")}
+          `;
+        } else {
+          row.innerHTML = `
+            <td>${result.value1}</td>
+            <td>${result.value2}</td>
+            <td class="${scoreClass}">${result.similarityScore.toFixed(3)}</td>
+            ${state.returnColumns.map(col => 
+              `<td>${result[`${col}_1`] || ""}</td><td>${result[`${col}_2`] || ""}</td>`
+            ).join("")}
+          `;
+        }
+        
+        tbody.appendChild(row);
+      });
+      
+      table.appendChild(tbody);
+      
+      // Add table to the page
+      resultsDiv.innerHTML = `<h2>Match Results (${state.matchResults.length} matches found)</h2>`;
+      if (state.matchResults.length > 1000) {
+        resultsDiv.innerHTML += `<p>Showing first 1000 matches. Download as CSV to see all results.</p>`;
+      }
+      resultsDiv.appendChild(table);
+      
+      // Create CSV for download
+      let csvContent = "";
+      
+      // Create header row
+      if (state.matchType === "twoFiles") {
+        csvContent += `"Primary Value","Secondary Value","Similarity",${state.returnColumns.map(col => `"${col}"`).join(",")}\n`;
+        
+        // Add data rows
+        state.matchResults.forEach(result => {
+          csvContent += `"${result.primaryValue}","${result.secondaryValue}",${result.similarityScore.toFixed(5)},`;
+          csvContent += state.returnColumns.map(col => {
+            let value = result[col] || "";
+            // Escape quotes in the value
+            if (typeof value === "string") {
+              value = value.replace(/"/g, '""');
+            }
+            return `"${value}"`;
+          }).join(",");
+          csvContent += "\n";
+        });
+      } else {
+        csvContent += `"Value 1","Value 2","Similarity",`;
+        csvContent += state.returnColumns.map(col => `"${col} (1)","${col} (2)"`).join(",") + "\n";
+        
+        // Add data rows
+        state.matchResults.forEach(result => {
+          csvContent += `"${result.value1}","${result.value2}",${result.similarityScore.toFixed(5)},`;
+          csvContent += state.returnColumns.map(col => {
+            let value1 = result[`${col}_1`] || "";
+            let value2 = result[`${col}_2`] || "";
+            // Escape quotes
+            if (typeof value1 === "string") value1 = value1.replace(/"/g, '""');
+            if (typeof value2 === "string") value2 = value2.replace(/"/g, '""');
+            return `"${value1}","${value2}"`;
+          }).join(",");
+          csvContent += "\n";
+        });
+      }
+      
+      // Create a blob with the CSV data
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Add a download button
+      const downloadButton = document.createElement("button");
+      downloadButton.textContent = "Download as CSV";
+      downloadButton.onclick = function() {
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = "fuzzy_match_results.csv";
+        link.click();
+        writeToConsole("CSV file download initiated", "success");
+      };
+      downloadButton.style.marginTop = "20px";
+      downloadButton.className = "download-btn";
+      resultsDiv.appendChild(downloadButton);
+      
+      // Add an "Export to Excel" button
+      const excelButton = document.createElement("button");
+      excelButton.textContent = "Export to Excel";
+      excelButton.style.marginLeft = "10px";
+      excelButton.style.marginTop = "20px";
+      excelButton.className = "download-btn";
+      excelButton.onclick = function() {
+        try {
+          // Convert the CSV data to Excel
+          const workbook = XLSX.utils.book_new();
+          const worksheet = XLSX.utils.aoa_to_sheet([]);
+          
+          // Parse the CSV data
+          Papa.parse(csvContent, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+              // Add the data to the worksheet
+              XLSX.utils.sheet_add_json(worksheet, results.data, { origin: "A1", skipHeader: false });
+              XLSX.utils.book_append_sheet(workbook, worksheet, "Fuzzy Matches");
+              
+              // Save the file
+              XLSX.writeFile(workbook, "fuzzy_match_results.xlsx");
+              writeToConsole("Excel file download initiated", "success");
+            }
+          });
+        } catch (error) {
+          writeToConsole(`Error exporting to Excel: ${error.message}`, "error");
+        }
+      };
+      resultsDiv.appendChild(excelButton);
+      
+      document.body.appendChild(resultsDiv);
+    }
+
+    function downloadCsv() {
+      if (state.matchResults.length === 0) {
+        writeToConsole("No matches to download.", "error");
+        return;
+      }
+      
+      // Create a blob with the CSV data
+      let csvContent = "";
+      
+      // Create header row
+      if (state.matchType === "twoFiles") {
+        csvContent += `"Primary Value","Secondary Value","Similarity",${state.returnColumns.map(col => `"${col}"`).join(",")}\n`;
+        
+        // Add data rows
+        state.matchResults.forEach(result => {
+          csvContent += `"${result.primaryValue}","${result.secondaryValue}",${result.similarityScore.toFixed(5)},`;
+          csvContent += state.returnColumns.map(col => {
+            let value = result[col] || "";
+            // Escape quotes in the value
+            if (typeof value === "string") {
+              value = value.replace(/"/g, '""');
+            }
+            return `"${value}"`;
+          }).join(",");
+          csvContent += "\n";
+        });
+      } else {
+        csvContent += `"Value 1","Value 2","Similarity",`;
+        csvContent += state.returnColumns.map(col => `"${col} (1)","${col} (2)"`).join(",") + "\n";
+        
+        // Add data rows
+        state.matchResults.forEach(result => {
+          csvContent += `"${result.value1}","${result.value2}",${result.similarityScore.toFixed(5)},`;
+          csvContent += state.returnColumns.map(col => {
+            let value1 = result[`${col}_1`] || "";
+            let value2 = result[`${col}_2`] || "";
+            // Escape quotes
+            if (typeof value1 === "string") value1 = value1.replace(/"/g, '""');
+            if (typeof value2 === "string") value2 = value2.replace(/"/g, '""');
+            return `"${value1}","${value2}"`;
+          }).join(",");
+          csvContent += "\n";
+        });
+      }
+      
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      // Create download link
+      const link = document.createElement("a");
+      link.setAttribute("href", blobUrl);
+      link.setAttribute("download", "fuzzy_match_results.csv");
+      link.style.display = "none";
+      document.body.appendChild(link);
+      
+      // Try to trigger the download
+      link.click();
+      
+      // Create visible download button as a fallback
+      const downloadDiv = document.createElement("div");
+      downloadDiv.style.marginTop = "20px";
+      downloadDiv.style.padding = "15px";
+      downloadDiv.style.backgroundColor = "#1a1a1a";
+      downloadDiv.style.border = "1px solid #444";
+      downloadDiv.style.borderRadius = "5px";
+      
+      downloadDiv.innerHTML = `
+        <p class="info">If the file didn't download automatically, click the button below:</p>
+        <button id="manualDownloadBtn" class="download-btn">
+          Download CSV Results
+        </button>
+        <p>Total Matches: ${state.matchResults.length}</p>
+      `;
+      
+      document.body.appendChild(downloadDiv);
+      
+      // Add event listener to the manual download button
+      document.getElementById("manualDownloadBtn").addEventListener("click", function() {
+        window.open(blobUrl, '_blank');
+      });
+      
+      writeToConsole("CSV file prepared for download: fuzzy_match_results.csv", "success");
+      writeToConsole("If download doesn't start automatically, use the manual download button below.", "info");
+      
+      // Clean up the hidden link element
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 100);
+    }
+
+    // Function to download results as Excel file
+    function downloadExcel() {
+      if (state.matchResults.length === 0) {
+        writeToConsole("No matches to download.", "error");
+        return;
+      }
+      
+      try {
+        writeToConsole("Preparing Excel file...", "info");
+        
+        // Create a new workbook
+        const workbook = XLSX.utils.book_new();
+        
+        // Convert match results to an array format for Excel
+        const excelData = [];
+        
+        // Add header row
+        if (state.matchType === "twoFiles") {
+          const headerRow = ["Primary Value", "Secondary Value", "Similarity"];
+          state.returnColumns.forEach(col => headerRow.push(col));
+          excelData.push(headerRow);
+          
+          // Add data rows
+          state.matchResults.forEach(result => {
+            const row = [
+              result.primaryValue,
+              result.secondaryValue,
+              result.similarityScore
+            ];
+            
+            state.returnColumns.forEach(col => {
+              row.push(result[col] || "");
+            });
+            
+            excelData.push(row);
+          });
+        } else {
+          // For single file duplicates
+          const headerRow = ["Value 1", "Value 2", "Similarity"];
+          state.returnColumns.forEach(col => {
+            headerRow.push(`${col} (1)`);
+            headerRow.push(`${col} (2)`);
+          });
+          excelData.push(headerRow);
+          
+          // Add data rows
+          state.matchResults.forEach(result => {
+            const row = [
+              result.value1,
+              result.value2,
+              result.similarityScore
+            ];
+            
+            state.returnColumns.forEach(col => {
+              row.push(result[`${col}_1`] || "");
+              row.push(result[`${col}_2`] || "");
+            });
+            
+            excelData.push(row);
+          });
+        }
+        
+        // Create worksheet
+        const worksheet = XLSX.utils.aoa_to_sheet(excelData);
+        
+        // Add worksheet to workbook
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Fuzzy Matches");
+        
+        // Apply basic formatting
+        const colWidth = [];
+        excelData[0].forEach(() => colWidth.push({ wch: 15 })); // Set column width
+        worksheet['!cols'] = colWidth;
+        
+        // Save the file
+        XLSX.writeFile(workbook, "fuzzy_match_results.xlsx");
+        
+        writeToConsole("Excel file download initiated: fuzzy_match_results.xlsx", "success");
+        
+        // Create visible download button as a fallback
+        const downloadDiv = document.createElement("div");
+        downloadDiv.style.marginTop = "20px";
+        downloadDiv.style.padding = "15px";
+        downloadDiv.style.backgroundColor = "#1a1a1a";
+        downloadDiv.style.border = "1px solid #444";
+        downloadDiv.style.borderRadius = "5px";
+        
+        downloadDiv.innerHTML = `
+          <p class="info">If the Excel file didn't download automatically:</p>
+          <p>1. Try the buttons below, or</p>
+          <p>2. Use the CSV download option instead:</p>
+          <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <button id="manualExcelBtn" class="download-btn">
+              Try Excel Download Again
+            </button>
+            <button id="manualCsvBtn" class="fallback-btn">
+              Download as CSV Instead
+            </button>
+          </div>
+          <p>Total Matches: ${state.matchResults.length}</p>
+        `;
+        
+        document.body.appendChild(downloadDiv);
+        
+        // Add event listeners to the manual download buttons
+        document.getElementById("manualExcelBtn").addEventListener("click", function() {
+          // Try the Excel download again
+          XLSX.writeFile(workbook, "fuzzy_match_results.xlsx");
+        });
+        
+        document.getElementById("manualCsvBtn").addEventListener("click", function() {
+          // Switch to CSV download
+          downloadCsv();
+        });
+        
+      } catch (error) {
+        writeToConsole(`Error creating Excel file: ${error.message}`, "error");
+        writeToConsole("Trying CSV download as fallback...", "info");
+        // Fall back to CSV if Excel export fails
+        downloadCsv();
+      }
+    }
+
+    function showProgressBar() {
+      progressBar.style.display = "block";
+      progressBarFill.style.width = "0%";
+    }
+
+    function updateProgress(percentage) {
+      progressBarFill.style.width = percentage + "%";
+    }
+
+    function hideProgressBar() {
+      progressBar.style.display = "none";
+    }
+
+    function startWorkflow(workflowName) {
+      state = {
+        workflow: workflowName,
+        step: 0,
+        primaryFile: null,
+        secondaryFile: null,
+        primaryData: null,
+        secondaryData: null,
+        primarySheetNames: null,
+        secondarySheetNames: null,
+        primarySelectedSheet: null,
+        secondarySelectedSheet: null,
+        primaryColumn: null,
+        secondaryColumn: null,
+        returnColumns: [],
+        threshold: 0.7,
+        matchResults: [],
+        outputType: null
+      };
+      
+      // Reset file inputs
+      primaryFileInput.value = "";
+      secondaryFileInput.value = "";
+      
+      processCurrentStep();
+    }
+
+    async function processCurrentStep() {
+      const workflow = workflows[state.workflow];
+      
+      if (state.step >= workflow.length) {
+        // Workflow complete
+        writeToConsole("Process complete!", "success");
+        commandInput.disabled = true;
+        submitButton.disabled = true;
+        executeButton.disabled = false;
+        return;
+      }
+      
+      const step = workflow[state.step];
+      
+      // If prompt is a function, execute it to get the prompt text
+      const promptText = typeof step.prompt === 'function' ? step.prompt() : step.prompt;
+      
+      if (promptText === null) {
+        // Skip this step
+        state.step++;
+        processCurrentStep();
+        return;
+      }
+      
+      executeButton.disabled = true;
+      promptUser(promptText);
+      
+      // Check if this step involves file selection or automatic processing
+      const isFileStep = typeof step.process === 'function' && (
+        step.process.toString().includes('primaryFileInput.click()') || 
+        step.process.toString().includes('secondaryFileInput.click()')
+      );
+      
+      const isAutoProcessStep = typeof step.process === 'function' && (
+        step.process.toString().includes('performTwoFileMatch') ||
+        step.process.toString().includes('performSingleFileMatch')
+      );
+      
+      // If this step doesn't need user input, process it immediately
+      if (isFileStep || isAutoProcessStep) {
+        commandInput.disabled = true;
+        submitButton.disabled = true;
+        
+        try {
+          writeToConsole("Processing step...", "info");
+          const result = await step.process();
+          
+          if (result) {
+            state.step++;
+            // Small delay to ensure UI updates properly
+            setTimeout(() => {
+              processCurrentStep();
+            }, 100);
+          } else {
+            commandInput.disabled = false;
+            submitButton.disabled = false;
+          }
+        } catch (error) {
+          writeToConsole(`Error: ${error.message}`, "error");
+          commandInput.disabled = false;
+          submitButton.disabled = false;
+        }
+      }
+    }
+
+    // Event handlers
+    executeButton.addEventListener("click", function() {
+      console.innerHTML = '';
+      startWorkflow("fuzzyMatch");
+    });
+
+    submitButton.addEventListener("click", async function() {
+      const response = commandInput.value.trim();
+      writeToConsole(response);
+      
+      commandInput.value = "";
+      commandInput.disabled = true;
+      submitButton.disabled = true;
+      
+      const workflow = workflows[state.workflow];
+      const step = workflow[state.step];
+      
+      try {
+        const result = await step.process(response);
+        if (result) {
+          state.step++;
+          processCurrentStep();
+        } else {
+          commandInput.disabled = false;
+          submitButton.disabled = false;
+          commandInput.focus();
+        }
+      } catch (error) {
+        writeToConsole(`Error: ${error.message}`, "error");
+        commandInput.disabled = false;
+        submitButton.disabled = false;
+        commandInput.focus();
+      }
+    });
+
+    commandInput.addEventListener("keyup", function(event) {
+      if (event.key === "Enter") {
+        submitButton.click();
+      }
+    });
+  </script>
+</body>
+</html>
