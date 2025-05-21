@@ -176,6 +176,25 @@
       gap: 10px;
     }
 
+    .data-select {
+      background-color: #1A1A1A;
+      border: 1px solid #444;
+      color: #FAFAFA;
+      padding: 8px;
+      margin-top: 10px;
+      font-family: 'Source Code Pro', monospace;
+      border-radius: 4px;
+    }
+
+    #returnColumnsContainer label {
+      display: block;
+      margin-top: 5px;
+    }
+
+    #returnColumnsContainer {
+      margin-top: 10px;
+    }
+
     #inputArea {
       display: flex;
       gap: 10px;
@@ -301,6 +320,14 @@
     </div>
   </div>
 
+  <div id="dataSelectors">
+    <select id="primarySheetSelect" class="data-select" style="display:none"></select>
+    <select id="secondarySheetSelect" class="data-select" style="display:none"></select>
+    <select id="primaryColumnSelect" class="data-select" style="display:none"></select>
+    <select id="secondaryColumnSelect" class="data-select" style="display:none"></select>
+    <div id="returnColumnsContainer" style="display:none"></div>
+  </div>
+
   </div> <!-- end container -->
 
   <script>
@@ -316,6 +343,11 @@
     const secondaryFileName = document.getElementById('secondaryFileName');
     const progressBar = document.getElementById('progressBar');
     const progressBarFill = document.getElementById('progressBarFill');
+    const primarySheetSelect = document.getElementById('primarySheetSelect');
+    const secondarySheetSelect = document.getElementById('secondarySheetSelect');
+    const primaryColumnSelect = document.getElementById('primaryColumnSelect');
+    const secondaryColumnSelect = document.getElementById('secondaryColumnSelect');
+    const returnColumnsContainer = document.getElementById('returnColumnsContainer');
 
     // State variables
     let state = {
@@ -439,38 +471,51 @@
         {
           prompt: function() {
             if (state.primarySheetNames && state.primarySheetNames.length > 1 && !state.primaryData) {
-              return `Which sheet from the primary file would you like to use? Enter a number:\n${state.primarySheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}`;
+              return `Select a sheet from the primary file:`;
             }
             return null; // Skip this step if not applicable
           },
-          process: async function(response) {
-            const idx = parseInt(response) - 1;
-            
-            if (idx >= 0 && idx < state.primarySheetNames.length) {
-              const selectedSheet = state.primarySheetNames[idx];
-              state.primarySelectedSheet = selectedSheet;
-              writeToConsole(`You selected sheet: ${selectedSheet}`, "info");
-              
-              try {
-                const fileData = await readFile(state.primaryFile, selectedSheet);
-                state.primaryData = fileData.data;
-                
-                if (state.primaryData && state.primaryData.length > 0) {
-                  writeToConsole(`Successfully loaded ${state.primaryData.length} rows from sheet "${selectedSheet}"`, "success");
-                  writeToConsole(`Columns: ${Object.keys(state.primaryData[0]).join(", ")}`, "info");
-                  return true;
-                } else {
-                  writeToConsole("Sheet appears to be empty or invalid.", "error");
-                  return false;
-                }
-              } catch (error) {
-                writeToConsole(`Error reading sheet: ${error.message}`, "error");
-                return false;
+          process: function() {
+            return new Promise((resolve) => {
+              if (!(state.primarySheetNames && state.primarySheetNames.length > 1 && !state.primaryData)) {
+                resolve(true);
+                return;
               }
-            } else {
-              writeToConsole(`Please enter a number between 1 and ${state.primarySheetNames.length}.`, "error");
-              return false;
-            }
+
+              commandInput.disabled = true;
+              submitButton.disabled = true;
+
+              populateSelect(primarySheetSelect, state.primarySheetNames);
+              showElement(primarySheetSelect);
+
+              const handler = async function() {
+                primarySheetSelect.removeEventListener('change', handler);
+                hideElement(primarySheetSelect);
+
+                const selectedSheet = primarySheetSelect.value;
+                state.primarySelectedSheet = selectedSheet;
+                writeToConsole(`You selected sheet: ${selectedSheet}`, 'info');
+
+                try {
+                  const fileData = await readFile(state.primaryFile, selectedSheet);
+                  state.primaryData = fileData.data;
+
+                  if (state.primaryData && state.primaryData.length > 0) {
+                    writeToConsole(`Successfully loaded ${state.primaryData.length} rows from sheet "${selectedSheet}"`, 'success');
+                    writeToConsole(`Columns: ${Object.keys(state.primaryData[0]).join(', ')}`, 'info');
+                    resolve(true);
+                  } else {
+                    writeToConsole('Sheet appears to be empty or invalid.', 'error');
+                    resolve(false);
+                  }
+                } catch (error) {
+                  writeToConsole(`Error reading sheet: ${error.message}`, 'error');
+                  resolve(false);
+                }
+              };
+
+              primarySheetSelect.addEventListener('change', handler);
+            });
           }
         },
         // Second file or column selection
@@ -555,19 +600,28 @@
                 }, 60000); // 1 minute timeout
               });
             } else {
-              // Single file, select column
-              const availableColumns = Object.keys(state.primaryData[0]);
-              if (availableColumns.includes(response)) {
-                state.primaryColumn = response;
-                writeToConsole(`You selected column: ${response}`, "info");
-                // For single file, use the same data for both
-                state.secondaryData = state.primaryData;
-                state.secondaryColumn = state.primaryColumn;
-                return true;
-              } else {
-                writeToConsole(`Column '${response}' not found. Available columns: ${availableColumns.join(", ")}`, "error");
-                return false;
-              }
+              // Single file, select column via dropdown
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                const availableColumns = Object.keys(state.primaryData[0]);
+                populateSelect(primaryColumnSelect, availableColumns);
+                showElement(primaryColumnSelect);
+
+                const handler = function() {
+                  primaryColumnSelect.removeEventListener('change', handler);
+                  hideElement(primaryColumnSelect);
+
+                  const col = primaryColumnSelect.value;
+                  state.primaryColumn = col;
+                  writeToConsole(`You selected column: ${col}`, 'info');
+                  state.secondaryData = state.primaryData;
+                  state.secondaryColumn = state.primaryColumn;
+                  resolve(true);
+                };
+
+                primaryColumnSelect.addEventListener('change', handler);
+              });
             }
           }
         },
@@ -575,38 +629,51 @@
         {
           prompt: function() {
             if (state.matchType === "twoFiles" && state.secondarySheetNames && state.secondarySheetNames.length > 1 && !state.secondaryData) {
-              return `Which sheet from the secondary file would you like to use? Enter a number:\n${state.secondarySheetNames.map((name, idx) => `${idx + 1}. ${name}`).join('\n')}`;
+              return `Select a sheet from the secondary file:`;
             }
             return null; // Skip this step if not applicable
           },
-          process: async function(response) {
-            const idx = parseInt(response) - 1;
-            
-            if (idx >= 0 && idx < state.secondarySheetNames.length) {
-              const selectedSheet = state.secondarySheetNames[idx];
-              state.secondarySelectedSheet = selectedSheet;
-              writeToConsole(`You selected sheet: ${selectedSheet}`, "info");
-              
-              try {
-                const fileData = await readFile(state.secondaryFile, selectedSheet);
-                state.secondaryData = fileData.data;
-                
-                if (state.secondaryData && state.secondaryData.length > 0) {
-                  writeToConsole(`Successfully loaded ${state.secondaryData.length} rows from sheet "${selectedSheet}"`, "success");
-                  writeToConsole(`Columns: ${Object.keys(state.secondaryData[0]).join(", ")}`, "info");
-                  return true;
-                } else {
-                  writeToConsole("Sheet appears to be empty or invalid.", "error");
-                  return false;
-                }
-              } catch (error) {
-                writeToConsole(`Error reading sheet: ${error.message}`, "error");
-                return false;
+          process: function() {
+            return new Promise((resolve) => {
+              if (!(state.matchType === 'twoFiles' && state.secondarySheetNames && state.secondarySheetNames.length > 1 && !state.secondaryData)) {
+                resolve(true);
+                return;
               }
-            } else {
-              writeToConsole(`Please enter a number between 1 and ${state.secondarySheetNames.length}.`, "error");
-              return false;
-            }
+
+              commandInput.disabled = true;
+              submitButton.disabled = true;
+
+              populateSelect(secondarySheetSelect, state.secondarySheetNames);
+              showElement(secondarySheetSelect);
+
+              const handler = async function() {
+                secondarySheetSelect.removeEventListener('change', handler);
+                hideElement(secondarySheetSelect);
+
+                const selectedSheet = secondarySheetSelect.value;
+                state.secondarySelectedSheet = selectedSheet;
+                writeToConsole(`You selected sheet: ${selectedSheet}`, 'info');
+
+                try {
+                  const fileData = await readFile(state.secondaryFile, selectedSheet);
+                  state.secondaryData = fileData.data;
+
+                  if (state.secondaryData && state.secondaryData.length > 0) {
+                    writeToConsole(`Successfully loaded ${state.secondaryData.length} rows from sheet "${selectedSheet}"`, 'success');
+                    writeToConsole(`Columns: ${Object.keys(state.secondaryData[0]).join(', ')}`, 'info');
+                    resolve(true);
+                  } else {
+                    writeToConsole('Sheet appears to be empty or invalid.', 'error');
+                    resolve(false);
+                  }
+                } catch (error) {
+                  writeToConsole(`Error reading sheet: ${error.message}`, 'error');
+                  resolve(false);
+                }
+              };
+
+              secondarySheetSelect.addEventListener('change', handler);
+            });
           }
         },
         {
@@ -617,56 +684,25 @@
           },
           process: function(response) {
             if (state.matchType === "twoFiles") {
-              // Get available columns and display them with their exact names
-              const availableColumns = Object.keys(state.primaryData[0]);
-              writeToConsole(`Available columns (exact names): "${availableColumns.join('", "')}"`, "info");
-              
-              // Try to find the column using a more flexible approach
-              // 1. Try exact match first
-              let found = availableColumns.includes(response);
-              let matchedColumn = response;
-              
-              // 2. If not found, try case-insensitive match
-              if (!found) {
-                const lowerResponse = response.toLowerCase();
-                const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found case-insensitive match: "${matchingCol}"`, "info");
-                }
-              }
-              
-              // 3. If still not found, try trimming whitespace
-              if (!found) {
-                const trimmedResponse = response.trim();
-                const matchingCol = availableColumns.find(col => col.trim() === trimmedResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found match after trimming whitespace: "${matchingCol}"`, "info");
-                }
-              }
-              
-              // 4. If still not found, try case-insensitive and trimming
-              if (!found) {
-                const lowerTrimmedResponse = response.toLowerCase().trim();
-                const matchingCol = availableColumns.find(col => col.toLowerCase().trim() === lowerTrimmedResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found match after case-insensitive comparison and trimming whitespace: "${matchingCol}"`, "info");
-                }
-              }
-              
-              if (found) {
-                state.primaryColumn = matchedColumn;
-                writeToConsole(`You selected column: "${matchedColumn}"`, "success");
-                return true;
-              } else {
-                writeToConsole(`Column "${response}" not found. Please enter the exact column name as shown above.`, "error");
-                return false;
-              }
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                const availableColumns = Object.keys(state.primaryData[0]);
+                populateSelect(primaryColumnSelect, availableColumns);
+                showElement(primaryColumnSelect);
+
+                const handler = function() {
+                  primaryColumnSelect.removeEventListener('change', handler);
+                  hideElement(primaryColumnSelect);
+
+                  const matchedColumn = primaryColumnSelect.value;
+                  state.primaryColumn = matchedColumn;
+                  writeToConsole(`You selected column: "${matchedColumn}"`, 'success');
+                  resolve(true);
+                };
+
+                primaryColumnSelect.addEventListener('change', handler);
+              });
             } else {
               // Threshold for single file
               const threshold = parseFloat(response);
@@ -689,99 +725,50 @@
           },
           process: function(response) {
             if (state.matchType === "twoFiles") {
-              // Get available columns and display them with their exact names
-              const availableColumns = Object.keys(state.secondaryData[0]);
-              writeToConsole(`Available columns (exact names): "${availableColumns.join('", "')}"`, "info");
-              
-              // Try to find the column using a more flexible approach
-              // 1. Try exact match first
-              let found = availableColumns.includes(response);
-              let matchedColumn = response;
-              
-              // 2. If not found, try case-insensitive match
-              if (!found) {
-                const lowerResponse = response.toLowerCase();
-                const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found case-insensitive match: "${matchingCol}"`, "info");
-                }
-              }
-              
-              // 3. If still not found, try trimming whitespace
-              if (!found) {
-                const trimmedResponse = response.trim();
-                const matchingCol = availableColumns.find(col => col.trim() === trimmedResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found match after trimming whitespace: "${matchingCol}"`, "info");
-                }
-              }
-              
-              // 4. If still not found, try case-insensitive and trimming
-              if (!found) {
-                const lowerTrimmedResponse = response.toLowerCase().trim();
-                const matchingCol = availableColumns.find(col => col.toLowerCase().trim() === lowerTrimmedResponse);
-                if (matchingCol) {
-                  found = true;
-                  matchedColumn = matchingCol;
-                  writeToConsole(`Found match after case-insensitive comparison and trimming whitespace: "${matchingCol}"`, "info");
-                }
-              }
-              
-              if (found) {
-                state.secondaryColumn = matchedColumn;
-                writeToConsole(`You selected column: "${matchedColumn}"`, "success");
-                return true;
-              } else {
-                writeToConsole(`Column "${response}" not found. Please enter the exact column name as shown above.`, "error");
-                return false;
-              }
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                const availableColumns = Object.keys(state.secondaryData[0]);
+                populateSelect(secondaryColumnSelect, availableColumns);
+                showElement(secondaryColumnSelect);
+
+                const handler = function() {
+                  secondaryColumnSelect.removeEventListener('change', handler);
+                  hideElement(secondaryColumnSelect);
+
+                  const col = secondaryColumnSelect.value;
+                  state.secondaryColumn = col;
+                  writeToConsole(`You selected column: "${col}"`, 'success');
+                  resolve(true);
+                };
+
+                secondaryColumnSelect.addEventListener('change', handler);
+              });
             } else {
-              // Return columns for single file
-              if (response.toLowerCase() === "all") {
-                state.returnColumns = Object.keys(state.primaryData[0]);
-                writeToConsole(`All columns will be included in results`, "info");
-                return true;
-              } else {
-                const columns = response.split(",").map(c => c.trim());
+              // Return columns for single file via checkboxes
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
                 const availableColumns = Object.keys(state.primaryData[0]);
-                
-                // Try to match each column, allowing for case-insensitivity
-                const matchedColumns = [];
-                const unmatchedColumns = [];
-                
-                columns.forEach(requestedCol => {
-                  // Try direct match
-                  if (availableColumns.includes(requestedCol)) {
-                    matchedColumns.push(requestedCol);
-                    return;
-                  }
-                  
-                  // Try case-insensitive match
-                  const lowerRequestedCol = requestedCol.toLowerCase();
-                  const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerRequestedCol);
-                  if (matchingCol) {
-                    matchedColumns.push(matchingCol);
-                    return;
-                  }
-                  
-                  // No match found
-                  unmatchedColumns.push(requestedCol);
-                });
-                
-                if (unmatchedColumns.length > 0) {
-                  writeToConsole(`These columns were not found: ${unmatchedColumns.join(", ")}`, "error");
-                  writeToConsole(`Available columns: "${availableColumns.join('", "')}"`, "info");
-                  return false;
-                } else {
-                  state.returnColumns = matchedColumns;
-                  writeToConsole(`Selected columns: ${matchedColumns.join(", ")}`, "info");
-                  return true;
-                }
-              }
+                populateCheckboxes(returnColumnsContainer, availableColumns);
+                const btn = document.createElement('button');
+                btn.textContent = 'Confirm Selection';
+                btn.className = 'download-btn';
+                btn.style.marginTop = '10px';
+                returnColumnsContainer.appendChild(btn);
+                showElement(returnColumnsContainer);
+
+                const handler = function() {
+                  btn.removeEventListener('click', handler);
+                  hideElement(returnColumnsContainer);
+                  const selected = getCheckedValues(returnColumnsContainer);
+                  state.returnColumns = selected.length ? selected : availableColumns;
+                  writeToConsole(`Selected columns: ${state.returnColumns.join(', ')}`, 'info');
+                  resolve(true);
+                };
+
+                btn.addEventListener('click', handler);
+              });
             }
           }
         },
@@ -814,47 +801,29 @@
           },
           process: function(response) {
             if (state.matchType === "twoFiles") {
-              if (response.toLowerCase() === "all") {
-                state.returnColumns = Object.keys(state.secondaryData[0]);
-                writeToConsole(`All columns will be included in results`, "info");
-                return true;
-              } else {
-                const columns = response.split(",").map(c => c.trim());
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
                 const availableColumns = Object.keys(state.secondaryData[0]);
-                
-                // Try to match each column, allowing for case-insensitivity
-                const matchedColumns = [];
-                const unmatchedColumns = [];
-                
-                columns.forEach(requestedCol => {
-                  // Try direct match
-                  if (availableColumns.includes(requestedCol)) {
-                    matchedColumns.push(requestedCol);
-                    return;
-                  }
-                  
-                  // Try case-insensitive match
-                  const lowerRequestedCol = requestedCol.toLowerCase();
-                  const matchingCol = availableColumns.find(col => col.toLowerCase() === lowerRequestedCol);
-                  if (matchingCol) {
-                    matchedColumns.push(matchingCol);
-                    return;
-                  }
-                  
-                  // No match found
-                  unmatchedColumns.push(requestedCol);
-                });
-                
-                if (unmatchedColumns.length > 0) {
-                  writeToConsole(`These columns were not found: ${unmatchedColumns.join(", ")}`, "error");
-                  writeToConsole(`Available columns: "${availableColumns.join('", "')}"`, "info");
-                  return false;
-                } else {
-                  state.returnColumns = matchedColumns;
-                  writeToConsole(`Selected columns: ${matchedColumns.join(", ")}`, "info");
-                  return true;
-                }
-              }
+                populateCheckboxes(returnColumnsContainer, availableColumns);
+                const btn = document.createElement('button');
+                btn.textContent = 'Confirm Selection';
+                btn.className = 'download-btn';
+                btn.style.marginTop = '10px';
+                returnColumnsContainer.appendChild(btn);
+                showElement(returnColumnsContainer);
+
+                const handler = function() {
+                  btn.removeEventListener('click', handler);
+                  hideElement(returnColumnsContainer);
+                  const selected = getCheckedValues(returnColumnsContainer);
+                  state.returnColumns = selected.length ? selected : availableColumns;
+                  writeToConsole(`Selected columns: ${state.returnColumns.join(', ')}`, 'info');
+                  resolve(true);
+                };
+
+                btn.addEventListener('click', handler);
+              });
             }
             return true; // Skip for single file
           }
@@ -968,11 +937,42 @@
       element.textContent = "> " + text;
       console.appendChild(element);
       console.scrollTop = console.scrollHeight;
-      
+
       // Enable input
       commandInput.disabled = false;
       submitButton.disabled = false;
       commandInput.focus();
+    }
+
+    function populateSelect(selectEl, options) {
+      selectEl.innerHTML = '';
+      options.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt;
+        o.textContent = opt;
+        selectEl.appendChild(o);
+      });
+    }
+
+    function hideElement(el) { el.style.display = 'none'; }
+    function showElement(el) { el.style.display = 'block'; }
+
+    function populateCheckboxes(container, options) {
+      container.innerHTML = '';
+      options.forEach(opt => {
+        const label = document.createElement('label');
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = opt;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(' ' + opt));
+        container.appendChild(label);
+      });
+    }
+
+    function getCheckedValues(container) {
+      return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+              .map(cb => cb.value);
     }
 
     async function readFile(file, sheetName = null) {
@@ -1651,8 +1651,7 @@
       
       // Check if this step involves file selection or automatic processing
       const isFileStep = typeof step.process === 'function' && (
-        step.process.toString().includes('primaryFileInput.addEventListener') ||
-        step.process.toString().includes('secondaryFileInput.addEventListener')
+        step.process.toString().includes('addEventListener')
       );
       
       const isAutoProcessStep = typeof step.process === 'function' && (
