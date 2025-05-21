@@ -195,6 +195,28 @@
       margin-top: 10px;
     }
 
+    .control-group {
+      margin-top: 20px;
+    }
+
+    #thresholdContainer label {
+      margin-right: 10px;
+    }
+
+    #thresholdRange {
+      vertical-align: middle;
+      margin-left: 5px;
+    }
+
+    #thresholdValue {
+      font-weight: bold;
+      margin-left: 5px;
+    }
+
+    #outputTypeContainer label {
+      margin-right: 15px;
+    }
+
     #inputArea {
       display: flex;
       gap: 10px;
@@ -326,6 +348,19 @@
     <select id="primaryColumnSelect" class="data-select" style="display:none"></select>
     <select id="secondaryColumnSelect" class="data-select" style="display:none"></select>
     <div id="returnColumnsContainer" style="display:none"></div>
+    <div id="thresholdContainer" style="display:none" class="control-group">
+      <label for="thresholdRange">Similarity Threshold:
+        <span id="thresholdValue">0.70</span>
+      </label>
+      <input type="range" id="thresholdRange" min="0" max="1" step="0.01" value="0.70">
+      <button id="thresholdConfirmBtn" class="download-btn" style="margin-left:10px;">Confirm</button>
+    </div>
+    <div id="outputTypeContainer" style="display:none" class="control-group">
+      <label><input type="radio" name="outputType" value="display" checked> Display</label>
+      <label><input type="radio" name="outputType" value="csv"> CSV</label>
+      <label><input type="radio" name="outputType" value="excel"> Excel</label>
+      <button id="outputTypeConfirmBtn" class="download-btn" style="margin-left:10px;">Confirm</button>
+    </div>
   </div>
 
   </div> <!-- end container -->
@@ -348,6 +383,12 @@
     const primaryColumnSelect = document.getElementById('primaryColumnSelect');
     const secondaryColumnSelect = document.getElementById('secondaryColumnSelect');
     const returnColumnsContainer = document.getElementById('returnColumnsContainer');
+    const thresholdContainer = document.getElementById('thresholdContainer');
+    const thresholdRange = document.getElementById('thresholdRange');
+    const thresholdValue = document.getElementById('thresholdValue');
+    const thresholdConfirmBtn = document.getElementById('thresholdConfirmBtn');
+    const outputTypeContainer = document.getElementById('outputTypeContainer');
+    const outputTypeConfirmBtn = document.getElementById('outputTypeConfirmBtn');
 
     // State variables
     let state = {
@@ -704,16 +745,30 @@
                 primaryColumnSelect.addEventListener('change', handler);
               });
             } else {
-              // Threshold for single file
-              const threshold = parseFloat(response);
-              if (!isNaN(threshold) && threshold >= 0 && threshold <= 1) {
-                state.threshold = threshold;
-                writeToConsole(`Threshold set to: ${threshold}`, "info");
-                return true;
-              } else {
-                writeToConsole("Please enter a valid number between 0.0 and 1.0", "error");
-                return false;
-              }
+              // Threshold for single file via slider
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                thresholdRange.value = state.threshold;
+                thresholdValue.textContent = parseFloat(state.threshold).toFixed(2);
+                showElement(thresholdContainer);
+
+                const updateVal = () => {
+                  thresholdValue.textContent = parseFloat(thresholdRange.value).toFixed(2);
+                };
+                thresholdRange.addEventListener('input', updateVal);
+
+                const handler = function() {
+                  thresholdRange.removeEventListener('input', updateVal);
+                  thresholdConfirmBtn.removeEventListener('click', handler);
+                  hideElement(thresholdContainer);
+                  state.threshold = parseFloat(thresholdRange.value);
+                  writeToConsole(`Threshold set to: ${state.threshold}`, 'info');
+                  resolve(true);
+                };
+
+                thresholdConfirmBtn.addEventListener('click', handler);
+              });
             }
           }
         },
@@ -775,20 +830,34 @@
         {
           prompt: function() {
             return state.matchType === "twoFiles" ?
-              "What threshold would you like to use for similarity (0.0-1.0)? Higher values require closer matches (recommended: 0.7)" :
+              "Adjust the similarity threshold:" :
               null;
           },
           process: function(response) {
             if (state.matchType === "twoFiles") {
-              const threshold = parseFloat(response);
-              if (!isNaN(threshold) && threshold >= 0 && threshold <= 1) {
-                state.threshold = threshold;
-                writeToConsole(`Threshold set to: ${threshold}`, "info");
-                return true;
-              } else {
-                writeToConsole("Please enter a valid number between 0.0 and 1.0", "error");
-                return false;
-              }
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                thresholdRange.value = state.threshold;
+                thresholdValue.textContent = parseFloat(state.threshold).toFixed(2);
+                showElement(thresholdContainer);
+
+                const updateVal = () => {
+                  thresholdValue.textContent = parseFloat(thresholdRange.value).toFixed(2);
+                };
+                thresholdRange.addEventListener('input', updateVal);
+
+                const handler = function() {
+                  thresholdRange.removeEventListener('input', updateVal);
+                  thresholdConfirmBtn.removeEventListener('click', handler);
+                  hideElement(thresholdContainer);
+                  state.threshold = parseFloat(thresholdRange.value);
+                  writeToConsole(`Threshold set to: ${state.threshold}`, 'info');
+                  resolve(true);
+                };
+
+                thresholdConfirmBtn.addEventListener('click', handler);
+              });
             }
             return true; // Skip for single file
           }
@@ -831,27 +900,33 @@
         {
           prompt: function() {
             return state.matchType === "twoFiles" ?
-              "How would you like to output the results? (1) Display in browser, (2) Download as CSV, (3) Download as Excel" :
+              "Choose how to output the results:" :
               null;
           },
           process: function(response) {
             if (state.matchType === "twoFiles") {
-              if (response === "1") {
-                state.outputType = "display";
-                writeToConsole("Results will be displayed in the browser", "info");
-                return true;
-              } else if (response === "2") {
-                state.outputType = "csv";
-                writeToConsole("Results will be downloaded as CSV", "info");
-                return true;
-              } else if (response === "3") {
-                state.outputType = "excel";
-                writeToConsole("Results will be downloaded as Excel file", "info");
-                return true;
-              } else {
-                writeToConsole("Please enter 1, 2, or 3.", "error");
-                return false;
-              }
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                showElement(outputTypeContainer);
+
+                const handler = function() {
+                  outputTypeConfirmBtn.removeEventListener('click', handler);
+                  hideElement(outputTypeContainer);
+                  const selected = document.querySelector('input[name="outputType"]:checked').value;
+                  state.outputType = selected;
+                  if (selected === 'display') {
+                    writeToConsole("Results will be displayed in the browser", 'info');
+                  } else if (selected === 'csv') {
+                    writeToConsole("Results will be downloaded as CSV", 'info');
+                  } else {
+                    writeToConsole("Results will be downloaded as Excel file", 'info');
+                  }
+                  resolve(true);
+                };
+
+                outputTypeConfirmBtn.addEventListener('click', handler);
+              });
             }
             return true; // Skip for single file
           }
@@ -859,27 +934,33 @@
         {
           prompt: function() {
             return state.matchType === "singleFile" ?
-              "How would you like to output the results? (1) Display in browser, (2) Download as CSV, (3) Download as Excel" :
+              "Choose how to output the results:" :
               null;
           },
           process: function(response) {
             if (state.matchType === "singleFile") {
-              if (response === "1") {
-                state.outputType = "display";
-                writeToConsole("Results will be displayed in the browser", "info");
-                return true;
-              } else if (response === "2") {
-                state.outputType = "csv";
-                writeToConsole("Results will be downloaded as CSV", "info");
-                return true;
-              } else if (response === "3") {
-                state.outputType = "excel";
-                writeToConsole("Results will be downloaded as Excel file", "info");
-                return true;
-              } else {
-                writeToConsole("Please enter 1, 2, or 3.", "error");
-                return false;
-              }
+              return new Promise((resolve) => {
+                commandInput.disabled = true;
+                submitButton.disabled = true;
+                showElement(outputTypeContainer);
+
+                const handler = function() {
+                  outputTypeConfirmBtn.removeEventListener('click', handler);
+                  hideElement(outputTypeContainer);
+                  const selected = document.querySelector('input[name="outputType"]:checked').value;
+                  state.outputType = selected;
+                  if (selected === 'display') {
+                    writeToConsole("Results will be displayed in the browser", 'info');
+                  } else if (selected === 'csv') {
+                    writeToConsole("Results will be downloaded as CSV", 'info');
+                  } else {
+                    writeToConsole("Results will be downloaded as Excel file", 'info');
+                  }
+                  resolve(true);
+                };
+
+                outputTypeConfirmBtn.addEventListener('click', handler);
+              });
             }
             return true; // Skip for two files
           }
