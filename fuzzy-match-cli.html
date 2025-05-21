@@ -1117,7 +1117,10 @@
 
     // Levenshtein distance for fuzzy matching
     function levenshteinDistance(a, b) {
-      if (!a || !b) return 0; // Handle null or undefined values
+      // Only treat null or undefined as missing values. Numeric zero is valid
+      if (a === null || a === undefined || b === null || b === undefined) {
+        return 0;
+      }
       
       const aStr = String(a).toLowerCase();
       const bStr = String(b).toLowerCase();
