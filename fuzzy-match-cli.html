@@ -1266,14 +1266,23 @@ function improvedFuzzyMatch(a, b) {
     mainTokenScore = mainTokenScore / maxMainTokens;
   }
   
-  // 2. Check if first main tokens match (company name usually starts with the most important word)
+  // 2. Check if first main tokens match (but scale based on overall match quality)
   if (tokensA.mainTokens[0] && tokensB.mainTokens[0]) {
     if (tokensA.mainTokens[0] === tokensB.mainTokens[0]) {
-      orderBonus = 0.2;
+      // Scale order bonus based on how many tokens match overall
+      const matchRatio = mainMatches.size / Math.min(tokensA.mainTokens.length, tokensB.mainTokens.length);
+      if (matchRatio >= 0.8) {
+        orderBonus = 0.2; // High bonus if most tokens match
+      } else if (matchRatio >= 0.5) {
+        orderBonus = 0.1; // Medium bonus if half match
+      } else {
+        orderBonus = 0.05; // Small bonus if few tokens match
+      }
     } else {
       const firstTokenSimilarity = levenshteinDistance(tokensA.mainTokens[0], tokensB.mainTokens[0]);
       if (firstTokenSimilarity > 0.8) {
-        orderBonus = 0.1;
+        const matchRatio = mainMatches.size / Math.min(tokensA.mainTokens.length, tokensB.mainTokens.length);
+        orderBonus = matchRatio >= 0.5 ? 0.05 : 0.02;
       }
     }
   }
