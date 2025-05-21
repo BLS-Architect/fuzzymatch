@@ -1176,6 +1176,39 @@ function tokenizeCompanyName(name) {
   return { mainTokens, suffixTokens, allTokens: tokens };
 }
 
+// Helper function to tokenize company names
+function tokenizeCompanyName(name) {
+  if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
+  
+  // Common suffixes that should have lower weight
+  const commonSuffixes = [
+    'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
+    'corporation', 'corp', 'company', 'co', 'limited', 'digital',
+    'interactive', 'software', 'productions', 'publishing', 'intl',
+    'international', 'usa', 'americas', 'domestic', 'consignment'
+  ];
+  
+  // Convert to lowercase and split into tokens
+  const tokens = name.toLowerCase()
+    .replace(/[^\w\s&]/g, ' ') // Keep & symbol but remove other non-word chars
+    .split(/\s+/)
+    .filter(token => token.length > 0 && token !== '&');
+  
+  // Separate main tokens from common suffixes
+  const mainTokens = [];
+  const suffixTokens = [];
+  
+  tokens.forEach(token => {
+    if (commonSuffixes.includes(token)) {
+      suffixTokens.push(token);
+    } else {
+      mainTokens.push(token);
+    }
+  });
+  
+  return { mainTokens, suffixTokens, allTokens: tokens };
+}
+
 // Improved fuzzy matching function
 function improvedFuzzyMatch(a, b) {
   if (!a || !b) return 0;
@@ -1189,6 +1222,52 @@ function improvedFuzzyMatch(a, b) {
   // If either has no main tokens, fall back to simple comparison
   if (tokensA.mainTokens.length === 0 || tokensB.mainTokens.length === 0) {
     return levenshteinDistance(a, b) * 0.5; // Penalize matches without main tokens
+  }
+  
+  // Check for subset matches - if all main tokens from shorter name exist in longer name
+  const shorterMainTokens = tokensA.mainTokens.length <= tokensB.mainTokens.length ? tokensA.mainTokens : tokensB.mainTokens;
+  const longerMainTokens = tokensA.mainTokens.length > tokensB.mainTokens.length ? tokensA.mainTokens : tokensB.mainTokens;
+  
+  // Check if all shorter tokens are found in longer tokens
+  let allShorterTokensFound = true;
+  for (const token of shorterMainTokens) {
+    if (!longerMainTokens.includes(token)) {
+      // Also check for very similar tokens (like "boardgames" vs "boardgame")
+      let foundSimilar = false;
+      for (const longerToken of longerMainTokens) {
+        if (levenshteinDistance(token, longerToken) > 0.85) {
+          foundSimilar = true;
+          break;
+        }
+      }
+      if (!foundSimilar) {
+        allShorterTokensFound = false;
+        break;
+      }
+    }
+  }
+  
+  // If all tokens from the shorter name are found in the longer name, it's likely the same company
+  if (allShorterTokensFound && shorterMainTokens.length > 0) {
+    // Give a high base score, with small penalty for extra words
+    const extraWordsPenalty = Math.min(0.1, (longerMainTokens.length - shorterMainTokens.length) * 0.02);
+    return Math.max(0.85, 0.95 - extraWordsPenalty);
+  }
+  
+  // Also handle special cases for "&" separated names (like "TeeTurtle & Unstable Games")
+  // Extract the first part before "&" if it exists
+  const aBeforeAnd = a.split('&')[0].trim().toLowerCase();
+  const bBeforeAnd = b.split('&')[0].trim().toLowerCase();
+  
+  if (aBeforeAnd && bBeforeAnd) {
+    const tokensABeforeAnd = tokenizeCompanyName(aBeforeAnd);
+    const tokensBBeforeAnd = tokenizeCompanyName(bBeforeAnd);
+    
+    // Check if the first part of one matches any part of the other
+    if (tokensABeforeAnd.mainTokens.every(token => tokensB.mainTokens.includes(token)) ||
+        tokensBBeforeAnd.mainTokens.every(token => tokensA.mainTokens.includes(token))) {
+      return Math.max(0.85, 0.95 - Math.abs(tokensA.mainTokens.length - tokensB.mainTokens.length) * 0.02);
+    }
   }
   
   // Calculate scores for different components
