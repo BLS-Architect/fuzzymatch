@@ -999,8 +999,16 @@
       commandInput.focus();
     }
 
-    function populateSelect(selectEl, options) {
+    function populateSelect(selectEl, options, placeholder = 'Select an option') {
       selectEl.innerHTML = '';
+
+      const ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = placeholder;
+      ph.disabled = true;
+      ph.selected = true;
+      selectEl.appendChild(ph);
+
       options.forEach(opt => {
         const o = document.createElement('option');
         o.value = opt;
