@@ -1177,6 +1177,52 @@ function tokenizeCompanyName(name) {
   return { mainTokens, suffixTokens, allTokens: tokens };
 }
 
+// Helper function to tokenize company names
+function tokenizeCompanyName(name) {
+  if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
+  
+  // Common suffixes that should have lower weight
+  const commonSuffixes = [
+    'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
+    'corporation', 'corp', 'company', 'co', 'limited', 'digital',
+    'interactive', 'software', 'productions', 'publishing', 'intl',
+    'international', 'usa', 'americas', 'domestic', 'consignment',
+    'pty', 'gmbh', 'resale'
+  ];
+  
+  // Convert to lowercase and split into tokens
+  const tokens = name.toLowerCase()
+    .replace(/[^\w\s&]/g, ' ') // Keep & symbol but remove other non-word chars
+    .split(/\s+/)
+    .filter(token => token.length > 0 && token !== '&');
+  
+  // Separate main tokens from common suffixes
+  const mainTokens = [];
+  const suffixTokens = [];
+  
+  tokens.forEach(token => {
+    if (commonSuffixes.includes(token)) {
+      suffixTokens.push(token);
+    } else {
+      mainTokens.push(token);
+    }
+  });
+  
+  return { mainTokens, suffixTokens, allTokens: tokens };
+}
+
+// Check if a word is too common to be distinctive
+function isCommonWord(word) {
+  const commonWords = [
+    'red', 'blue', 'green', 'black', 'white', 'gold', 'silver',
+    'hot', 'cold', 'big', 'small', 'new', 'old', 'good', 'bad',
+    'game', 'play', 'fun', 'super', 'mega', 'ultra', 'pro',
+    'first', 'last', 'next', 'best', 'top', 'great',
+    'from', 'the', 'and', 'or', 'of', 'at', 'in', 'on'
+  ];
+  return commonWords.includes(word.toLowerCase());
+}
+
 // Improved fuzzy matching function
 function improvedFuzzyMatch(a, b) {
   if (!a || !b) return 0;
@@ -1189,105 +1235,108 @@ function improvedFuzzyMatch(a, b) {
   
   // If either has no main tokens, fall back to simple comparison
   if (tokensA.mainTokens.length === 0 || tokensB.mainTokens.length === 0) {
-    return levenshteinDistance(a, b) * 0.5; // Penalize matches without main tokens
+    return levenshteinDistance(a, b) * 0.5;
   }
   
-  // Check for subset matches - if all main tokens from shorter name exist in longer name
-  const shorterMainTokens = tokensA.mainTokens.length <= tokensB.mainTokens.length ? tokensA.mainTokens : tokensB.mainTokens;
-  const longerMainTokens = tokensA.mainTokens.length > tokensB.mainTokens.length ? tokensA.mainTokens : tokensB.mainTokens;
+  // NEW: Smart subset matching - only for likely same companies
+  const shorterTokens = tokensA.mainTokens.length <= tokensB.mainTokens.length ? tokensA : tokensB;
+  const longerTokens = tokensA.mainTokens.length > tokensB.mainTokens.length ? tokensB : tokensA;
+  const shorterMainTokens = shorterTokens.mainTokens;
+  const longerMainTokens = longerTokens.mainTokens;
   
-  // Check if all shorter tokens are found in longer tokens
-  let allShorterTokensFound = true;
-  for (const token of shorterMainTokens) {
-    if (!longerMainTokens.includes(token)) {
-      // Also check for very similar tokens (like "boardgames" vs "boardgame")
-      let foundSimilar = false;
-      for (const longerToken of longerMainTokens) {
-        if (levenshteinDistance(token, longerToken) > 0.85) {
-          foundSimilar = true;
-          break;
-        }
-      }
-      if (!foundSimilar) {
-        allShorterTokensFound = false;
+  // Check if this could be a legitimate subset (same company, different format)
+  let isLikelySubset = false;
+  let subsetScore = 0;
+  
+  if (shorterMainTokens.length > 0) {
+    // Case 1: Shorter name is a prefix of longer name (e.g., "Portal Games" → "Portal Games Co")
+    let isPrefixMatch = true;
+    for (let i = 0; i < shorterMainTokens.length; i++) {
+      if (i >= longerMainTokens.length || shorterMainTokens[i] !== longerMainTokens[i]) {
+        isPrefixMatch = false;
         break;
       }
     }
-  }
-  
-  // If all tokens from the shorter name are found in the longer name, it's likely the same company
-  if (allShorterTokensFound && shorterMainTokens.length > 0) {
-    // Give a high base score, with small penalty for extra words
-    const extraWordsPenalty = Math.min(0.1, (longerMainTokens.length - shorterMainTokens.length) * 0.02);
-    return Math.max(0.85, 0.95 - extraWordsPenalty);
-  }
-  
-  // Special handling for "&" separated names ONLY when both have "&" or one is clearly a subset
-  if (a.includes('&') && !b.includes('&')) {
-    // Only apply this logic if B starts with the first part of A (before &)
-    const aBeforeAnd = a.split('&')[0].trim();
-    if (b.toLowerCase().startsWith(aBeforeAnd.toLowerCase())) {
-      const tokensABeforeAnd = tokenizeCompanyName(aBeforeAnd);
-      const tokensBStart = tokenizeCompanyName(b.split(' ').slice(0, tokensABeforeAnd.mainTokens.length).join(' '));
-      
-      if (tokensABeforeAnd.mainTokens.every(token => tokensBStart.mainTokens.includes(token))) {
-        return Math.max(0.85, 0.95 - Math.abs(tokensA.mainTokens.length - tokensB.mainTokens.length) * 0.02);
-      }
+    
+    if (isPrefixMatch) {
+      isLikelySubset = true;
+      subsetScore = 0.95 - (longerMainTokens.length - shorterMainTokens.length) * 0.02;
+    }
+    
+    // Case 2: Check for special patterns like "3WS" in "Th3rd World Studios (3WS Games)"
+    const shorterName = shorterMainTokens.join('');
+    const longerFullName = b.toLowerCase();
+    if (!isLikelySubset && longerFullName.includes('(' + shorterName) || longerFullName.includes('(' + a.toLowerCase())) {
+      isLikelySubset = true;
+      subsetScore = 0.91;
     }
   }
   
-  // Calculate scores for different components
-  let mainTokenScore = 0;
-  let suffixScore = 0;
-  let orderBonus = 0;
+  if (isLikelySubset) {
+    return Math.max(0.85, subsetScore);
+  }
   
-  // 1. Main token matching (most important)
+  // Special handling for "&" separated names ONLY when it makes sense
+  if (a.includes('&') && !b.includes('&')) {
+    const aBeforeAnd = a.split('&')[0].trim();
+    if (b.toLowerCase().startsWith(aBeforeAnd.toLowerCase())) {
+      return 0.93;
+    }
+  }
+  
+  // Calculate token-based matching score
+  let mainTokenScore = 0;
+  let distinctiveMatches = 0;
   const mainMatches = new Set();
+  
   tokensA.mainTokens.forEach(tokenA => {
     tokensB.mainTokens.forEach(tokenB => {
       if (tokenA === tokenB) {
         mainMatches.add(tokenA);
+        // Give more weight to distinctive (non-common) words
+        if (!isCommonWord(tokenA)) {
+          distinctiveMatches++;
+        }
       } else {
-        // Check for partial matches in main tokens
+        // Check for very similar tokens
         const similarity = levenshteinDistance(tokenA, tokenB);
-        if (similarity > 0.8) {
-          mainTokenScore += similarity * 0.5;
+        if (similarity > 0.85) {
+          mainTokenScore += similarity * 0.3;
         }
       }
     });
   });
   
-  // Exact matches are worth more
-  mainTokenScore += mainMatches.size;
+  // Penalize if only common words match
+  if (mainMatches.size > 0 && distinctiveMatches === 0) {
+    // Only common words match - this is probably not the same company
+    return Math.min(0.3, mainMatches.size * 0.15);
+  }
   
-  // Normalize main token score
+  // Calculate main token score
+  mainTokenScore += mainMatches.size;
   const maxMainTokens = Math.max(tokensA.mainTokens.length, tokensB.mainTokens.length);
   if (maxMainTokens > 0) {
     mainTokenScore = mainTokenScore / maxMainTokens;
   }
   
-  // 2. Check if first main tokens match (but scale based on overall match quality)
-  if (tokensA.mainTokens[0] && tokensB.mainTokens[0]) {
-    if (tokensA.mainTokens[0] === tokensB.mainTokens[0]) {
-      // Scale order bonus based on how many tokens match overall
-      const matchRatio = mainMatches.size / Math.min(tokensA.mainTokens.length, tokensB.mainTokens.length);
-      if (matchRatio >= 0.8) {
-        orderBonus = 0.2; // High bonus if most tokens match
-      } else if (matchRatio >= 0.5) {
-        orderBonus = 0.1; // Medium bonus if half match
-      } else {
-        orderBonus = 0.05; // Small bonus if few tokens match
-      }
+  // Order bonus - but only if multiple tokens match or distinctive first token
+  let orderBonus = 0;
+  if (tokensA.mainTokens[0] && tokensB.mainTokens[0] && tokensA.mainTokens[0] === tokensB.mainTokens[0]) {
+    const firstTokenIsDistinctive = !isCommonWord(tokensA.mainTokens[0]);
+    const matchRatio = mainMatches.size / Math.min(tokensA.mainTokens.length, tokensB.mainTokens.length);
+    
+    if (firstTokenIsDistinctive && matchRatio >= 0.5) {
+      orderBonus = 0.15;
+    } else if (matchRatio >= 0.8) {
+      orderBonus = 0.1;
     } else {
-      const firstTokenSimilarity = levenshteinDistance(tokensA.mainTokens[0], tokensB.mainTokens[0]);
-      if (firstTokenSimilarity > 0.8) {
-        const matchRatio = mainMatches.size / Math.min(tokensA.mainTokens.length, tokensB.mainTokens.length);
-        orderBonus = matchRatio >= 0.5 ? 0.05 : 0.02;
-      }
+      orderBonus = 0.02;
     }
   }
   
-  // 3. Suffix matching (less important)
+  // Suffix bonus (minimal weight)
+  let suffixScore = 0;
   const suffixMatches = new Set();
   tokensA.suffixTokens.forEach(tokenA => {
     tokensB.suffixTokens.forEach(tokenB => {
@@ -1297,28 +1346,20 @@ function improvedFuzzyMatch(a, b) {
     });
   });
   
-  // Normalize suffix score
-  const maxSuffixTokens = Math.max(tokensA.suffixTokens.length, tokensB.suffixTokens.length);
-  if (maxSuffixTokens > 0) {
+  if (tokensA.suffixTokens.length > 0 || tokensB.suffixTokens.length > 0) {
+    const maxSuffixTokens = Math.max(tokensA.suffixTokens.length, tokensB.suffixTokens.length);
     suffixScore = suffixMatches.size / maxSuffixTokens;
   }
   
-  // 4. Calculate weighted final score
-  // Main tokens are 70% of score, order bonus is 20%, suffixes only 10%
-  let finalScore = (mainTokenScore * 0.7) + (orderBonus) + (suffixScore * 0.1);
+  // Final score calculation with adjusted weights
+  let finalScore = (mainTokenScore * 0.75) + orderBonus + (suffixScore * 0.05);
   
-  // 5. Apply penalties for mismatches
-  // If no main tokens match at all, cap the score
-  if (mainMatches.size === 0 && mainTokenScore < 0.3) {
-    finalScore = Math.min(finalScore, 0.3);
-  }
-  
-  // If only suffixes match, cap the score even more
-  if (mainMatches.size === 0 && suffixMatches.size > 0) {
+  // Additional penalties
+  if (mainMatches.size === 0) {
     finalScore = Math.min(finalScore, 0.2);
   }
   
-  return Math.min(finalScore, 1.0); // Ensure score doesn't exceed 1.0
+  return Math.min(finalScore, 1.0);
 }
     async function performTwoFileMatch() {
       const totalRows = state.primaryData.length;
