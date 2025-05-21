@@ -1153,39 +1153,6 @@ function tokenizeCompanyName(name) {
     'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
     'corporation', 'corp', 'company', 'co', 'limited', 'digital',
     'interactive', 'software', 'productions', 'publishing', 'intl',
-    'international', 'usa', 'americas', 'domestic', 'consignment'
-  ];
-  
-  // Convert to lowercase and split into tokens
-  const tokens = name.toLowerCase()
-    .replace(/[^\w\s&]/g, ' ') // Keep & symbol but remove other non-word chars
-    .split(/\s+/)
-    .filter(token => token.length > 0 && token !== '&');
-  
-  // Separate main tokens from common suffixes
-  const mainTokens = [];
-  const suffixTokens = [];
-  
-  tokens.forEach(token => {
-    if (commonSuffixes.includes(token)) {
-      suffixTokens.push(token);
-    } else {
-      mainTokens.push(token);
-    }
-  });
-  
-  return { mainTokens, suffixTokens, allTokens: tokens };
-}
-
-// Helper function to tokenize company names
-function tokenizeCompanyName(name) {
-  if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
-  
-  // Common suffixes that should have lower weight
-  const commonSuffixes = [
-    'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
-    'corporation', 'corp', 'company', 'co', 'limited', 'digital',
-    'interactive', 'software', 'productions', 'publishing', 'intl',
     'international', 'usa', 'americas', 'domestic', 'consignment',
     'pty', 'gmbh', 'resale'
   ];
@@ -1240,7 +1207,7 @@ function improvedFuzzyMatch(a, b) {
   
   // NEW: Smart subset matching - only for likely same companies
   const shorterTokens = tokensA.mainTokens.length <= tokensB.mainTokens.length ? tokensA : tokensB;
-  const longerTokens = tokensA.mainTokens.length > tokensB.mainTokens.length ? tokensB : tokensA;
+  const longerTokens = tokensA.mainTokens.length <= tokensB.mainTokens.length ? tokensB : tokensA;
   const shorterMainTokens = shorterTokens.mainTokens;
   const longerMainTokens = longerTokens.mainTokens;
   
