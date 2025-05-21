@@ -1144,38 +1144,6 @@
       return 1 - (matrix[bStr.length][aStr.length] / maxLen);
     }
 
-    // Helper function to tokenize company names
-function tokenizeCompanyName(name) {
-  if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
-  
-  // Common suffixes that should have lower weight
-  const commonSuffixes = [
-    'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
-    'corporation', 'corp', 'company', 'co', 'limited', 'digital',
-    'interactive', 'software', 'productions', 'publishing'
-  ];
-  
-  // Convert to lowercase and split into tokens
-  const tokens = name.toLowerCase()
-    .replace(/[^\w\s]/g, ' ') // Replace non-word chars with spaces
-    .split(/\s+/)
-    .filter(token => token.length > 0);
-  
-  // Separate main tokens from common suffixes
-  const mainTokens = [];
-  const suffixTokens = [];
-  
-  tokens.forEach(token => {
-    if (commonSuffixes.includes(token)) {
-      suffixTokens.push(token);
-    } else {
-      mainTokens.push(token);
-    }
-  });
-  
-  return { mainTokens, suffixTokens, allTokens: tokens };
-}
-
 // Helper function to tokenize company names
 function tokenizeCompanyName(name) {
   if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
@@ -1254,19 +1222,17 @@ function improvedFuzzyMatch(a, b) {
     return Math.max(0.85, 0.95 - extraWordsPenalty);
   }
   
-  // Also handle special cases for "&" separated names (like "TeeTurtle & Unstable Games")
-  // Extract the first part before "&" if it exists
-  const aBeforeAnd = a.split('&')[0].trim().toLowerCase();
-  const bBeforeAnd = b.split('&')[0].trim().toLowerCase();
-  
-  if (aBeforeAnd && bBeforeAnd) {
-    const tokensABeforeAnd = tokenizeCompanyName(aBeforeAnd);
-    const tokensBBeforeAnd = tokenizeCompanyName(bBeforeAnd);
-    
-    // Check if the first part of one matches any part of the other
-    if (tokensABeforeAnd.mainTokens.every(token => tokensB.mainTokens.includes(token)) ||
-        tokensBBeforeAnd.mainTokens.every(token => tokensA.mainTokens.includes(token))) {
-      return Math.max(0.85, 0.95 - Math.abs(tokensA.mainTokens.length - tokensB.mainTokens.length) * 0.02);
+  // Special handling for "&" separated names ONLY when both have "&" or one is clearly a subset
+  if (a.includes('&') && !b.includes('&')) {
+    // Only apply this logic if B starts with the first part of A (before &)
+    const aBeforeAnd = a.split('&')[0].trim();
+    if (b.toLowerCase().startsWith(aBeforeAnd.toLowerCase())) {
+      const tokensABeforeAnd = tokenizeCompanyName(aBeforeAnd);
+      const tokensBStart = tokenizeCompanyName(b.split(' ').slice(0, tokensABeforeAnd.mainTokens.length).join(' '));
+      
+      if (tokensABeforeAnd.mainTokens.every(token => tokensBStart.mainTokens.includes(token))) {
+        return Math.max(0.85, 0.95 - Math.abs(tokensA.mainTokens.length - tokensB.mainTokens.length) * 0.02);
+      }
     }
   }
   
