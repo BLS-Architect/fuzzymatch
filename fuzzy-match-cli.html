@@ -53,7 +53,7 @@
     }
 
     .success {
-      color: #F14C32;
+      color: #4CAF50;
     }
 
     .info {
@@ -299,7 +299,7 @@
     <button id="submitButton" disabled>Submit</button>
   </div>
   
-  <div id="progressBar">
+  <div id="progressBar" role="progressbar" aria-live="polite" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
     <div id="progressBarFill"></div>
   </div>
 
@@ -329,12 +329,13 @@
       <input type="range" id="thresholdRange" min="0" max="1" step="0.01" value="0.70">
       <button id="thresholdConfirmBtn" class="download-btn" style="margin-left:10px;">Confirm</button>
     </div>
-    <div id="outputTypeContainer" style="display:none" class="control-group">
+  <div id="outputTypeContainer" style="display:none" class="control-group">
       <label><input type="radio" name="outputType" value="display" checked> Display</label>
       <label><input type="radio" name="outputType" value="csv"> CSV</label>
       <label><input type="radio" name="outputType" value="excel"> Excel</label>
       <button id="outputTypeConfirmBtn" class="download-btn" style="margin-left:10px;">Confirm</button>
     </div>
+    <div id="resultsContainer"></div>
   </div>
 
   </div> <!-- end container -->
@@ -363,6 +364,7 @@
     const thresholdConfirmBtn = document.getElementById('thresholdConfirmBtn');
     const outputTypeContainer = document.getElementById('outputTypeContainer');
     const outputTypeConfirmBtn = document.getElementById('outputTypeConfirmBtn');
+    const resultsContainer = document.getElementById('resultsContainer');
 
     // State variables
     let state = {
@@ -471,14 +473,6 @@
               // Add the event listener
               primaryFileInput.addEventListener('change', fileChangeHandler);
               
-              // Add a timeout to handle cases where user doesn't select a file
-              setTimeout(() => {
-                if (!state.primaryFile) {
-                  writeToConsole("File selection timed out. Please try again.", "error");
-                  primaryFileInput.removeEventListener('change', fileChangeHandler);
-                  resolve(false);
-                }
-              }, 60000); // 1 minute timeout
             });
           }
         },
@@ -605,14 +599,6 @@
                 // Add the event listener
                 secondaryFileInput.addEventListener('change', fileChangeHandler);
                 
-                // Add a timeout to handle cases where user doesn't select a file
-                setTimeout(() => {
-                  if (!state.secondaryFile) {
-                    writeToConsole("File selection timed out. Please try again.", "error");
-                    secondaryFileInput.removeEventListener('change', fileChangeHandler);
-                    resolve(false);
-                  }
-                }, 60000); // 1 minute timeout
               });
             } else {
               // Single file, select column via dropdown
@@ -1260,12 +1246,15 @@
 
     // Display the results in a table on the page
     function displayResults() {
+      // Clear any previous results
+      resultsContainer.innerHTML = '';
+
       // Create a table to display the results
       const resultsDiv = document.createElement("div");
-      
+
       if (state.matchResults.length === 0) {
         resultsDiv.innerHTML = "<h2>No matches found with the current threshold.</h2>";
-        document.body.appendChild(resultsDiv);
+        resultsContainer.appendChild(resultsDiv);
         return;
       }
       
@@ -1430,8 +1419,8 @@
         }
       };
       resultsDiv.appendChild(excelButton);
-      
-      document.body.appendChild(resultsDiv);
+
+      resultsContainer.appendChild(resultsDiv);
     }
 
     function downloadCsv() {
@@ -1508,7 +1497,7 @@
         <p>Total Matches: ${state.matchResults.length}</p>
       `;
       
-      document.body.appendChild(downloadDiv);
+      resultsContainer.appendChild(downloadDiv);
       
       // Add event listener to the manual download button
       document.getElementById("manualDownloadBtn").addEventListener("click", function() {
@@ -1625,7 +1614,7 @@
           <p>Total Matches: ${state.matchResults.length}</p>
         `;
         
-        document.body.appendChild(downloadDiv);
+        resultsContainer.appendChild(downloadDiv);
         
         // Add event listeners to the manual download buttons
         document.getElementById("manualExcelBtn").addEventListener("click", function() {
@@ -1649,10 +1638,12 @@
     function showProgressBar() {
       progressBar.style.display = "block";
       progressBarFill.style.width = "0%";
+      progressBar.setAttribute('aria-valuenow', '0');
     }
 
     function updateProgress(percentage) {
       progressBarFill.style.width = percentage + "%";
+      progressBar.setAttribute('aria-valuenow', Math.round(percentage).toString());
     }
 
     function hideProgressBar() {
@@ -1684,6 +1675,9 @@
       secondaryFileInput.value = "";
       primaryFileName.textContent = "No file chosen";
       secondaryFileName.textContent = "No file chosen";
+
+      // Clear previous results
+      resultsContainer.innerHTML = '';
 
       processCurrentStep();
     }
