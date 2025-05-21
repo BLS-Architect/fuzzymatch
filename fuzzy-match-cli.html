@@ -1144,6 +1144,128 @@
       return 1 - (matrix[bStr.length][aStr.length] / maxLen);
     }
 
+    // Helper function to tokenize company names
+function tokenizeCompanyName(name) {
+  if (!name) return { mainTokens: [], suffixTokens: [], allTokens: [] };
+  
+  // Common suffixes that should have lower weight
+  const commonSuffixes = [
+    'games', 'studios', 'entertainment', 'llc', 'ltd', 'inc', 
+    'corporation', 'corp', 'company', 'co', 'limited', 'digital',
+    'interactive', 'software', 'productions', 'publishing'
+  ];
+  
+  // Convert to lowercase and split into tokens
+  const tokens = name.toLowerCase()
+    .replace(/[^\w\s]/g, ' ') // Replace non-word chars with spaces
+    .split(/\s+/)
+    .filter(token => token.length > 0);
+  
+  // Separate main tokens from common suffixes
+  const mainTokens = [];
+  const suffixTokens = [];
+  
+  tokens.forEach(token => {
+    if (commonSuffixes.includes(token)) {
+      suffixTokens.push(token);
+    } else {
+      mainTokens.push(token);
+    }
+  });
+  
+  return { mainTokens, suffixTokens, allTokens: tokens };
+}
+
+// Improved fuzzy matching function
+function improvedFuzzyMatch(a, b) {
+  if (!a || !b) return 0;
+  
+  // Exact match (case-insensitive)
+  if (a.toLowerCase() === b.toLowerCase()) return 1.0;
+  
+  const tokensA = tokenizeCompanyName(a);
+  const tokensB = tokenizeCompanyName(b);
+  
+  // If either has no main tokens, fall back to simple comparison
+  if (tokensA.mainTokens.length === 0 || tokensB.mainTokens.length === 0) {
+    return levenshteinDistance(a, b) * 0.5; // Penalize matches without main tokens
+  }
+  
+  // Calculate scores for different components
+  let mainTokenScore = 0;
+  let suffixScore = 0;
+  let orderBonus = 0;
+  
+  // 1. Main token matching (most important)
+  const mainMatches = new Set();
+  tokensA.mainTokens.forEach(tokenA => {
+    tokensB.mainTokens.forEach(tokenB => {
+      if (tokenA === tokenB) {
+        mainMatches.add(tokenA);
+      } else {
+        // Check for partial matches in main tokens
+        const similarity = levenshteinDistance(tokenA, tokenB);
+        if (similarity > 0.8) {
+          mainTokenScore += similarity * 0.5;
+        }
+      }
+    });
+  });
+  
+  // Exact matches are worth more
+  mainTokenScore += mainMatches.size;
+  
+  // Normalize main token score
+  const maxMainTokens = Math.max(tokensA.mainTokens.length, tokensB.mainTokens.length);
+  if (maxMainTokens > 0) {
+    mainTokenScore = mainTokenScore / maxMainTokens;
+  }
+  
+  // 2. Check if first main tokens match (company name usually starts with the most important word)
+  if (tokensA.mainTokens[0] && tokensB.mainTokens[0]) {
+    if (tokensA.mainTokens[0] === tokensB.mainTokens[0]) {
+      orderBonus = 0.2;
+    } else {
+      const firstTokenSimilarity = levenshteinDistance(tokensA.mainTokens[0], tokensB.mainTokens[0]);
+      if (firstTokenSimilarity > 0.8) {
+        orderBonus = 0.1;
+      }
+    }
+  }
+  
+  // 3. Suffix matching (less important)
+  const suffixMatches = new Set();
+  tokensA.suffixTokens.forEach(tokenA => {
+    tokensB.suffixTokens.forEach(tokenB => {
+      if (tokenA === tokenB) {
+        suffixMatches.add(tokenA);
+      }
+    });
+  });
+  
+  // Normalize suffix score
+  const maxSuffixTokens = Math.max(tokensA.suffixTokens.length, tokensB.suffixTokens.length);
+  if (maxSuffixTokens > 0) {
+    suffixScore = suffixMatches.size / maxSuffixTokens;
+  }
+  
+  // 4. Calculate weighted final score
+  // Main tokens are 70% of score, order bonus is 20%, suffixes only 10%
+  let finalScore = (mainTokenScore * 0.7) + (orderBonus) + (suffixScore * 0.1);
+  
+  // 5. Apply penalties for mismatches
+  // If no main tokens match at all, cap the score
+  if (mainMatches.size === 0 && mainTokenScore < 0.3) {
+    finalScore = Math.min(finalScore, 0.3);
+  }
+  
+  // If only suffixes match, cap the score even more
+  if (mainMatches.size === 0 && suffixMatches.size > 0) {
+    finalScore = Math.min(finalScore, 0.2);
+  }
+  
+  return Math.min(finalScore, 1.0); // Ensure score doesn't exceed 1.0
+}
     async function performTwoFileMatch() {
       const totalRows = state.primaryData.length;
       const batchSize = 10; // Process in batches to keep UI responsive
@@ -1161,7 +1283,7 @@
               
               state.secondaryData.forEach(secondaryRow => {
                 const secondaryValue = secondaryRow[state.secondaryColumn];
-                const similarityScore = levenshteinDistance(primaryValue, secondaryValue);
+                const similarityScore = improvedFuzzyMatch(primaryValue, secondaryValue);
                 
                 if (similarityScore >= state.threshold) {
                   const resultRow = {
@@ -1211,7 +1333,7 @@
                 const row2 = state.primaryData[j];
                 const value2 = row2[state.primaryColumn];
                 
-                const similarityScore = levenshteinDistance(value1, value2);
+                const similarityScore = improvedFuzzyMatch(value1, value2);
                 
                 if (similarityScore >= state.threshold && value1 !== value2) {
                   const resultRow = {
