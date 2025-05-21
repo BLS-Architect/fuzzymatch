@@ -1542,6 +1542,14 @@ function improvedFuzzyMatch(a, b) {
       };
       resultsDiv.appendChild(excelButton);
 
+      // Add rerun button to adjust threshold and reprocess
+      const rerunButton = document.createElement("button");
+      rerunButton.textContent = "Adjust Threshold & Re-run";
+      rerunButton.className = "download-btn";
+      rerunButton.style.marginLeft = "10px";
+      rerunButton.onclick = adjustThresholdAndRerun;
+      resultsDiv.appendChild(rerunButton);
+
       resultsContainer.appendChild(resultsDiv);
     }
 
@@ -1620,6 +1628,14 @@ function improvedFuzzyMatch(a, b) {
       `;
       
       resultsContainer.appendChild(downloadDiv);
+
+      // Add rerun button to allow adjusting threshold
+      const rerunBtn = document.createElement("button");
+      rerunBtn.textContent = "Adjust Threshold & Re-run";
+      rerunBtn.className = "download-btn";
+      rerunBtn.style.marginLeft = "10px";
+      rerunBtn.onclick = adjustThresholdAndRerun;
+      downloadDiv.appendChild(rerunBtn);
       
       // Add event listener to the manual download button
       document.getElementById("manualDownloadBtn").addEventListener("click", function() {
@@ -1737,6 +1753,14 @@ function improvedFuzzyMatch(a, b) {
         `;
         
         resultsContainer.appendChild(downloadDiv);
+
+        // Add rerun button to adjust threshold and reprocess
+        const rerunBtn = document.createElement("button");
+        rerunBtn.textContent = "Adjust Threshold & Re-run";
+        rerunBtn.className = "download-btn";
+        rerunBtn.style.marginLeft = "10px";
+        rerunBtn.onclick = adjustThresholdAndRerun;
+        downloadDiv.appendChild(rerunBtn);
         
         // Add event listeners to the manual download buttons
         document.getElementById("manualExcelBtn").addEventListener("click", function() {
@@ -1755,6 +1779,51 @@ function improvedFuzzyMatch(a, b) {
         // Fall back to CSV if Excel export fails
         downloadCsv();
       }
+    }
+
+    // Allow user to adjust the threshold and re-run matching without
+    // reselecting input files
+    async function adjustThresholdAndRerun() {
+      thresholdRange.value = state.threshold;
+      thresholdValue.textContent = parseFloat(state.threshold).toFixed(2);
+      showElement(thresholdContainer);
+
+      const updateVal = () => {
+        thresholdValue.textContent = parseFloat(thresholdRange.value).toFixed(2);
+      };
+      thresholdRange.addEventListener('input', updateVal);
+
+      const handler = async function() {
+        thresholdRange.removeEventListener('input', updateVal);
+        thresholdConfirmBtn.removeEventListener('click', handler);
+        hideElement(thresholdContainer);
+
+        state.threshold = parseFloat(thresholdRange.value);
+        writeToConsole(`Threshold set to: ${state.threshold}`, 'info');
+        writeToConsole('Re-running match with new threshold...', 'info');
+
+        showProgressBar();
+        if (state.matchType === 'twoFiles') {
+          await performTwoFileMatch();
+        } else {
+          await performSingleFileMatch();
+        }
+        hideProgressBar();
+
+        const totalMatches = state.matchResults.length;
+        writeToConsole(`Re-run complete! Found ${totalMatches} potential matches.`, 'success');
+
+        resultsContainer.innerHTML = '';
+        if (state.outputType === 'display') {
+          displayResults();
+        } else if (state.outputType === 'csv') {
+          downloadCsv();
+        } else if (state.outputType === 'excel') {
+          downloadExcel();
+        }
+      };
+
+      thresholdConfirmBtn.addEventListener('click', handler);
     }
 
     function showProgressBar() {
